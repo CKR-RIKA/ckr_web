@@ -139,3 +139,7 @@
 .admin-users-link[hidden] { display: none !important; }
 #ckrManageUsers[hidden] { display: none !important; }
 #ckrUsersModal[hidden], #ckrAuthGate[hidden], #ckrAppShell[hidden] { display: none !important; }
+
+
+/* Respeita o atributo hidden mesmo em elementos com display definido por classes */
+[hidden]{display:none!important}
