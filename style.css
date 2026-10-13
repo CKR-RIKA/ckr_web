@@ -9,3 +9,24 @@
 @media(max-width:1150px){.sidebar{width:220px}.main{margin-left:220px}.content{padding:26px 22px}.topbar{padding:0 22px}.stats-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.dashboard-grid{grid-template-columns:1fr}.quick-surface{display:grid;grid-template-columns:1fr 1fr;gap:9px}.quick-surface .surface-heading{grid-column:1/-1}.quick-action{margin:0}}
 @media(max-width:760px){.sidebar{transform:translateX(-100%);transition:transform .22s;width:260px;box-shadow:12px 0 35px #0d172333}.sidebar.open{transform:translateX(0)}.main{margin-left:0}.topbar{height:61px;padding:0 15px;gap:12px}.mobile-menu{display:block;border:0;background:#f0f3f9;border-radius:8px;width:34px;height:34px;color:#33435b;font-size:17px}.breadcrumb{margin-right:auto;gap:7px}.topbar-right{gap:9px}.today{display:none}.content{padding:23px 14px}.welcome-row h1,.page-heading h1{font-size:26px}.welcome-row{align-items:flex-start}.welcome-row>.button{font-size:0;padding:12px}.welcome-row>.button span{font-size:18px}.stats-grid{gap:10px}.stat-card{padding:13px}.stat-top{align-items:flex-start;gap:7px;flex-direction:column}.stat-icon{width:30px;height:30px}.stat-card>strong{font-size:23px;margin:10px 0}.stat-label{font-size:10px}.stat-foot{font-size:9px;line-height:1.4}.notice{align-items:flex-start;padding:11px;gap:9px}.notice-close{font-size:18px}.recent-surface,.quick-surface,.list-surface,.form-surface{padding:14px}.surface-heading{align-items:flex-start}.surface-heading h2{font-size:14px}.surface-heading p{line-height:1.5}.surface-heading>.button{font-size:10px;padding:8px}.quick-surface{grid-template-columns:1fr}.quick-surface .surface-heading{grid-column:auto}.quick-action{padding:11px 9px}.form-grid{grid-template-columns:1fr 1fr;gap:12px}.form-grid .field-wide{grid-column:1/-1}.search-box{width:100%;min-width:0}.responsive-heading{display:grid}.operation-card{padding:21px 16px}.form-two{grid-template-columns:1fr 1fr}.backup-grid{grid-template-columns:1fr}.backup-card{padding:20px}.backup-card>p:not(.eyebrow){min-height:0}.danger-zone{align-items:flex-start;flex-direction:column}.history-controls{width:100%;flex-wrap:wrap}.history-controls select{flex:1}.footer{flex-direction:column}.form-actions .button{flex:1}}
 @media(max-width:380px){.form-grid,.form-two{grid-template-columns:1fr}.form-grid .field-wide{grid-column:auto}.stats-grid{grid-template-columns:1fr 1fr}.welcome-row h1{font-size:23px}.topbar-right{display:none}}
+
+/* Cadastro de clientes */
+.cep-row{display:flex;gap:8px;align-items:center}
+.cep-row input{flex:1;min-width:0}
+.cep-row .button{height:42px;padding:0 12px;flex:0 0 auto}
+#panel-clientes .form-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+#panel-clientes .field-wide{grid-column:1/-1}
+#panel-clientes .form-actions{margin-top:2px}
+#listaClientes .row-action{white-space:nowrap}
+@media(max-width:760px){
+ #panel-clientes .form-grid{grid-template-columns:1fr 1fr}
+ #panel-clientes .field-wide{grid-column:1/-1}
+ .cep-row{align-items:stretch}
+ .cep-row .button{white-space:normal}
+}
+@media(max-width:380px){
+ #panel-clientes .form-grid{grid-template-columns:1fr}
+ #panel-clientes .field-wide{grid-column:auto}
+ .cep-row{flex-direction:column}
+ .cep-row .button{width:100%}
+}
