@@ -56,11 +56,11 @@
           <div class="dashboard-insights">
             <section class="surface insight-card">
               <div class="surface-heading"><div><h2>Vendas dos últimos 7 dias</h2><p>Valores registrados por dia</p></div><span id="dashboardVendasTotal" class="report-total">R$ 0,00</span></div>
-              <div id="dashboardSalesChart" class="sales-chart" aria-label="Gráfico de vendas dos últimos sete dias"></div>
+              <div id="dashboardSalesChart" class="sales-chart" role="img" aria-label="Gráfico de linhas das vendas dos últimos sete dias"></div>
             </section>
             <section class="surface insight-card stock-insight">
               <div class="surface-heading"><div><h2>Status do estoque</h2><p>Produtos por disponibilidade</p></div></div>
-              <div class="stock-status-grid"><div><strong id="estoqueEmDia">0</strong><span>Em dia</span></div><div><strong id="estoqueBaixo">0</strong><span>Estoque baixo (até 2)</span></div><div><strong id="estoqueZerado">0</strong><span>Sem estoque</span></div></div>
+              <div class="stock-chart-layout"><div id="stockDonut" class="stock-donut" role="img" aria-label="Gráfico de rosca do status do estoque"><div class="stock-donut-center"><strong id="stockDonutTotal">0</strong><span>produtos</span></div></div><div class="stock-legend"><div><i class="legend-dot dot-ok"></i><span>Em dia</span><b id="estoqueEmDia">0</b></div><div><i class="legend-dot dot-low"></i><span>Estoque baixo</span><b id="estoqueBaixo">0</b></div><div><i class="legend-dot dot-zero"></i><span>Sem estoque</span><b id="estoqueZerado">0</b></div></div></div>
             </section>
           </div>
 
