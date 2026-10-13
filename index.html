@@ -36,6 +36,21 @@
       <p class="auth-local-note">Acesso local deste navegador. Os dados do CKR continuam salvos neste dispositivo.</p>
     </div>
   </section>
+
+  <div id="ckrUsersModal" class="users-modal" hidden role="dialog" aria-modal="true" aria-labelledby="ckrUsersTitle">
+    <div class="users-card">
+      <div class="users-heading"><div><p class="auth-eyebrow">ADMINISTRAÇÃO</p><h2 id="ckrUsersTitle">Gerenciar usuários</h2><p>Somente o ADMIN pode criar e remover usuários.</p></div><button type="button" id="ckrCloseUsers" class="users-close" aria-label="Fechar">×</button></div>
+      <form id="ckrCreateUserForm" autocomplete="off">
+        <label for="ckrNewUsername">Nome de usuário</label><input id="ckrNewUsername" required minlength="3" maxlength="60" placeholder="Ex.: vendedor01">
+        <label for="ckrNewPassword">Senha (mínimo 6 caracteres)</label><input id="ckrNewPassword" type="password" required minlength="6" maxlength="120" autocomplete="new-password" placeholder="Crie uma senha">
+        <label for="ckrNewPasswordConfirm">Confirmar senha</label><input id="ckrNewPasswordConfirm" type="password" required minlength="6" maxlength="120" autocomplete="new-password" placeholder="Repita a senha">
+        <div class="users-expiry-note"><b>Tempo de uso:</b> 182,5 dias (182 dias e 12 horas), contados a partir da criação.</div>
+        <p id="ckrUsersError" class="auth-error" role="alert"></p><button class="button button-primary auth-submit" type="submit">Criar usuário</button>
+      </form>
+      <div class="users-list-title">Usuários cadastrados</div><div id="ckrUsersList" class="users-list"></div>
+      <p class="users-security-note">Aviso: este login é local e serve para organizar o acesso neste navegador. Não é proteção segura contra alguém que tenha acesso técnico ao computador.</p>
+    </div>
+  </div>
   <div class="app-shell" id="ckrAppShell" hidden>
     <aside class="sidebar" id="sidebar">
       <div class="brand">
@@ -63,7 +78,7 @@
       <header class="topbar">
         <button class="mobile-menu" id="mobileMenu" aria-label="Abrir menu">☰</button>
         <div class="breadcrumb"><span>CKR</span><i>/</i><b id="pageBreadcrumb">Visão geral</b></div>
-        <div class="topbar-right"><span class="today" id="todayLabel"></span><div class="avatar" id="ckrUserAvatar">AD</div><button type="button" id="ckrLogout" class="button button-secondary auth-logout">Sair</button></div>
+        <div class="topbar-right"><span class="today" id="todayLabel"></span><button type="button" id="ckrManageUsers" class="button button-light button-small" hidden>Gerenciar usuários</button><div class="avatar" id="ckrUserAvatar">AD</div><button type="button" id="ckrLogout" class="button button-secondary auth-logout">Sair</button></div>
       </header>
 
       <div class="content">
