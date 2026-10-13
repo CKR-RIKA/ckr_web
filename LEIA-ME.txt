@@ -1,0 +1,30 @@
+CKR WEB V2 — VISUAL PREMIUM
+=============================
+
+ARQUIVOS
+- index.html: interface do sistema
+- style.css: layout responsivo e estilo visual
+- app.js: operações, estoque, vendas, histórico e backup
+
+INSTALAÇÃO LOCAL
+1. Extraia o ZIP para uma pasta.
+2. Mantenha os três arquivos juntos.
+3. Abra index.html no navegador.
+
+PUBLICAR NO GITHUB PAGES
+1. Envie index.html, style.css e app.js para a raiz do repositório.
+2. Em Settings > Pages, configure a publicação pela branch principal e pasta raiz.
+3. Abra o endereço publicado depois que o GitHub concluir a implantação.
+
+DADOS
+- Dados ficam em localStorage do navegador, separados por dispositivo/navegador.
+- Faça backup em Backup e transferência.
+- Para transferir para outro dispositivo, baixe o JSON, envie-o e restaure no destino.
+- A restauração substitui os dados locais; não combina duas bases.
+- Não use navegação anônima e não limpe os dados do navegador sem backup.
+
+OBSERVAÇÃO
+Esta V2 é uma interface web independente e não importa automaticamente o banco ckr.db
+nem todas as funções do programa Python CKR.py original. Recursos como clientes separados,
+fornecedores, devoluções, usuários/login, relatórios PDF, e-mail e leitor de código precisam
+ser adicionados em etapas futuras.
