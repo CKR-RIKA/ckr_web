@@ -53,3 +53,22 @@
 .payment-notice.payment-ok{background:#ecfdf3;color:#027a48}
 .payment-notice.payment-error{background:#fef3f2;color:#b42318}
 @media(max-width:520px){.sale-discounts,.payment-card-options,.payment-summary{grid-template-columns:1fr}.payment-row-main{grid-template-columns:1fr 1fr 32px}.payment-heading{align-items:flex-start;flex-direction:column}}
+
+/* Dashboard aprimorado e relatório por período */
+.dashboard-insights{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(260px,1fr);gap:17px;margin:0 0 17px}
+.insight-card{padding:20px;min-width:0}.report-total{font-weight:800;color:#3468f5;background:#edf2ff;border-radius:20px;padding:8px 12px;font-size:12px;white-space:nowrap}
+.sales-chart{height:190px;display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:12px;padding-top:12px}
+.sales-bar-wrap{display:grid;grid-template-rows:20px 1fr 20px;gap:6px;min-width:0;text-align:center;align-items:end}
+.sales-bar-value{font-size:9px;color:#7d8ba1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sales-bar-track{height:130px;background:#f3f6fc;border-radius:7px 7px 3px 3px;display:flex;align-items:flex-end;overflow:hidden}
+.sales-bar{width:100%;min-height:3px;border-radius:6px 6px 2px 2px;background:linear-gradient(180deg,#4d7dff,#2858e8)}
+.sales-bar-label{font-size:10px;color:#738198}
+.stock-status-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:20px}
+.stock-status-grid>div{border:1px solid #edf0f6;background:#fbfcff;border-radius:11px;padding:17px 10px;display:grid;gap:8px;text-align:center}
+.stock-status-grid strong{font:800 25px Manrope;color:#20324d}.stock-status-grid span{font-size:10px;color:#8490a2}
+.report-filter-surface{padding:21px;margin-bottom:17px}.report-filters{display:grid;grid-template-columns:repeat(3,minmax(0,1fr)) auto;align-items:end;gap:13px}.report-filters .button{height:42px;white-space:nowrap}
+.report-summary-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:15px;margin-bottom:17px}.report-summary-grid .stat-card{min-width:0}.report-summary-grid .stat-card>strong{font-size:24px;overflow-wrap:anywhere}
+.report-results{padding:20px}.report-actions{display:flex;gap:8px;flex-wrap:wrap}
+@media(max-width:1050px){.dashboard-insights{grid-template-columns:1fr}.report-filters{grid-template-columns:repeat(2,minmax(0,1fr))}.report-filters .button{width:100%}}
+@media(max-width:600px){.report-filters,.report-summary-grid{grid-template-columns:1fr}.stock-status-grid{grid-template-columns:1fr 1fr 1fr}.sales-chart{gap:5px}.sales-bar-value{font-size:8px}.report-actions{width:100%}.report-actions .button{flex:1}}
+@media print{.sidebar,.topbar,.footer,.report-filter-surface,.report-actions,.page-heading{display:none!important}.main{margin:0!important}.content{padding:0!important}.panel{display:none!important}#panel-relatorios{display:block!important}.report-summary-grid{grid-template-columns:repeat(3,1fr)}body{background:#fff}.surface,.stat-card{box-shadow:none;border:1px solid #ddd;break-inside:avoid}#relatorioRows{font-size:10px}}
