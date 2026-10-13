@@ -4,8 +4,8 @@ let data = loadData();
 let editingId = null;
 let toastTimer;
 
-function emptyData(){return {version:2,products:[],movements:[]};}
-function loadData(){try{const raw=localStorage.getItem(STORAGE_KEY);if(!raw)return emptyData();const parsed=JSON.parse(raw);if(!Array.isArray(parsed.products)||!Array.isArray(parsed.movements))return emptyData();return parsed;}catch(e){return emptyData();}}
+function emptyData(){return {version:3,products:[],movements:[],customers:[]};}
+function loadData(){try{const raw=localStorage.getItem(STORAGE_KEY);if(!raw)return emptyData();const parsed=JSON.parse(raw);if(!Array.isArray(parsed.products)||!Array.isArray(parsed.movements))return emptyData();if(!Array.isArray(parsed.customers))parsed.customers=[];return parsed;}catch(e){return emptyData();}}
 function saveData(){try{localStorage.setItem(STORAGE_KEY,JSON.stringify(data));renderAll();return true;}catch(e){toast('Não foi possível salvar. Verifique o espaço disponível no navegador.',true);return false;}}
 function id(){return (crypto&&crypto.randomUUID)?crypto.randomUUID():`${Date.now()}-${Math.random().toString(16).slice(2)}`;}
 function money(n){return Number(n||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});}
@@ -21,10 +21,11 @@ document.getElementById('mobileMenu').addEventListener('click',()=>document.getE
 document.getElementById('closeNotice').addEventListener('click',()=>document.querySelector('.notice').style.display='none');
 document.getElementById('todayLabel').textContent=new Date().toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'short',year:'numeric'});
 
-function renderAll(){renderStats();renderProducts();renderSelects();renderHistory();renderRecent();}
+function renderAll(){renderStats();renderProducts();renderSelects();renderHistory();renderRecent();renderCustomers();}
 function renderStats(){
  document.getElementById('totalProdutos').textContent=data.products.length;
  document.getElementById('menuProdutos').textContent=data.products.length;
+  document.getElementById('menuClientes').textContent=(data.customers||[]).length;
  document.getElementById('totalUnidades').textContent=data.products.reduce((s,p)=>s+Number(p.stock||0),0);
  document.getElementById('totalVendas').textContent=data.movements.filter(m=>m.type==='venda').length;
  document.getElementById('valorEstoque').textContent=money(data.products.reduce((s,p)=>s+Number(p.stock||0)*Number(p.cost||0),0));
@@ -52,6 +53,63 @@ function renderRecent(){
  document.getElementById('recentRows').innerHTML=list.map(m=>`<tr><td><span class="pill ${m.type}">${m.type==='venda'?'Venda':'Entrada'}</span></td><td><span class="product-name">${esc(m.productName)}</span></td><td>${m.type==='venda'?'−':'+'}${Number(m.quantity)}</td><td>${money(m.total)}</td><td>${esc(dateText(m.date))}</td></tr>`).join('');
  document.getElementById('recentEmpty').style.display=list.length?'none':'block';
 }
+
+let editingCustomerId = null;
+function customerById(cid){return (data.customers||[]).find(c=>c.id===cid);}
+function digits(v){return String(v||'').replace(/\D/g,'');}
+function maskCpf(v){const d=digits(v).slice(0,11);return d.replace(/(\d{3})(\d)/,'$1.$2').replace(/(\d{3})\.(\d{3})(\d)/,'$1.$2.$3').replace(/(\d{3})\.(\d{3})\.(\d{3})(\d{1,2})$/,'$1.$2.$3-$4');}
+function maskPhone(v){const d=digits(v).slice(0,11);if(d.length<=10)return d.replace(/^(\d{2})(\d)/,'($1) $2').replace(/(\d{4})(\d{1,4})$/,'$1-$2');return d.replace(/^(\d{2})(\d{5})(\d{1,4})$/,'($1) $2-$3');}
+function resetCustomerForm(){editingCustomerId=null;document.getElementById('formCliente').reset();document.getElementById('formClienteTitulo').textContent='Cadastrar cliente';document.getElementById('salvarClienteBtn').textContent='Salvar cliente';document.getElementById('cancelarClienteEdicao').hidden=true;}
+function renderCustomers(){
+ const customers=data.customers||[],q=(document.getElementById('buscaCliente')?.value||'').trim().toLowerCase();
+ const filtered=customers.filter(c=>[c.name,c.cpf,c.phone,c.city,c.state].some(v=>String(v||'').toLowerCase().includes(q))).sort((a,b)=>a.name.localeCompare(b.name,'pt-BR'));
+ document.getElementById('listaClientes').innerHTML=filtered.map(c=>`<tr><td><span class="product-name">${esc(c.name)}</span></td><td>${esc(c.cpf||'—')}</td><td>${esc(c.phone||'—')}</td><td>${esc([c.city,c.state].filter(Boolean).join(' / ')||'—')}</td><td><button class="row-action" data-customer-edit="${esc(c.id)}">Editar</button><button class="row-action delete" data-customer-delete="${esc(c.id)}">Excluir</button></td></tr>`).join('');
+ document.getElementById('semClientes').style.display=filtered.length?'none':'block';
+ document.getElementById('clienteSubtitulo').textContent=`${filtered.length} ${filtered.length===1?'cliente encontrado':'clientes encontrados'}`;
+ document.getElementById('clientesSugestoes').innerHTML=customers.slice().sort((a,b)=>a.name.localeCompare(b.name,'pt-BR')).map(c=>`<option value="${esc(c.name)}"></option>`).join('');
+}
+const customerFields={name:'clienteNome',cep:'clienteCep',street:'clienteLogradouro',number:'clienteNumero',complement:'clienteComplemento',neighborhood:'clienteBairro',city:'clienteCidade',state:'clienteEstado',cpf:'clienteCpf',phone:'clienteTelefone'};
+function readCustomerForm(){const c={};for(const [key,field] of Object.entries(customerFields))c[key]=document.getElementById(field).value.trim();c.state=c.state.toUpperCase();return c;}
+function fillCustomerForm(c){for(const [key,field] of Object.entries(customerFields))document.getElementById(field).value=c[key]||'';document.getElementById('formClienteTitulo').textContent='Editar cliente';document.getElementById('salvarClienteBtn').textContent='Salvar alterações';document.getElementById('cancelarClienteEdicao').hidden=false;document.getElementById('formCliente').scrollIntoView({behavior:'smooth',block:'start'});}
+document.getElementById('clienteCpf').addEventListener('input',e=>e.target.value=maskCpf(e.target.value));
+document.getElementById('clienteTelefone').addEventListener('input',e=>e.target.value=maskPhone(e.target.value));
+document.getElementById('clienteCep').addEventListener('input',e=>{const d=digits(e.target.value).slice(0,8);e.target.value=d.length>5?d.slice(0,5)+'-'+d.slice(5):d;});
+async function buscarEnderecoCep(){
+ const cep=digits(document.getElementById('clienteCep').value);
+ if(cep.length!==8){toast('Informe um CEP válido com 8 números.',true);return;}
+ const btn=document.getElementById('buscarCep');btn.disabled=true;btn.textContent='Buscando...';
+ try{
+  const response=await fetch(`https://viacep.com.br/ws/${cep}/json/`);
+  if(!response.ok)throw new Error('Falha na consulta');
+  const address=await response.json();if(address.erro){toast('CEP não encontrado. Confira o número informado.',true);return;}
+  document.getElementById('clienteLogradouro').value=address.logradouro||'';
+  document.getElementById('clienteBairro').value=address.bairro||'';
+  document.getElementById('clienteCidade').value=address.localidade||'';
+  document.getElementById('clienteEstado').value=address.uf||'';
+  document.getElementById('clienteNumero').focus();toast('Endereço preenchido pelo CEP.');
+ }catch(err){toast('Não foi possível consultar o CEP. Verifique a conexão e tente novamente.',true);}
+ finally{btn.disabled=false;btn.textContent='Buscar CEP';}
+}
+document.getElementById('buscarCep').addEventListener('click',buscarEnderecoCep);
+document.getElementById('clienteCep').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();buscarEnderecoCep();}});
+document.getElementById('formCliente').addEventListener('submit',e=>{
+ e.preventDefault();const c=readCustomerForm();
+ if(!c.name){toast('Informe o nome do cliente.',true);return;}
+ const cpfDigits=digits(c.cpf),phoneDigits=digits(c.phone);
+ if(c.cpf&&cpfDigits.length!==11){toast('O CPF deve conter 11 números.',true);return;}
+ if(c.phone&&phoneDigits.length<10){toast('Confira o telefone informado.',true);return;}
+ if(c.cpf&&(data.customers||[]).some(x=>x.id!==editingCustomerId&&digits(x.cpf)===cpfDigits)){toast('Já existe um cliente cadastrado com este CPF.',true);return;}
+ if(editingCustomerId){const old=customerById(editingCustomerId);if(!old)return;Object.assign(old,c);toast('Cadastro do cliente atualizado.');}
+ else{c.id=id();data.customers.push(c);toast('Cliente cadastrado com sucesso.');}
+ if(saveData())resetCustomerForm();
+});
+document.getElementById('cancelarClienteEdicao').addEventListener('click',resetCustomerForm);
+document.getElementById('buscaCliente').addEventListener('input',renderCustomers);
+document.getElementById('listaClientes').addEventListener('click',e=>{
+ const edit=e.target.dataset.customerEdit,del=e.target.dataset.customerDelete;
+ if(edit){const c=customerById(edit);if(c){editingCustomerId=c.id;fillCustomerForm(c);}}
+ if(del){const c=customerById(del);if(!c)return;if(!confirm(`Excluir o cadastro de "${c.name}"? O histórico de vendas será mantido.`))return;data.customers=data.customers.filter(x=>x.id!==del);if(editingCustomerId===del)resetCustomerForm();if(saveData())toast('Cliente excluído.');}
+});
 function resetProductForm(){editingId=null;document.getElementById('formProduto').reset();document.getElementById('produtoEstoque').disabled=false;document.getElementById('produtoEstoque').title='';document.getElementById('produtoCusto').value='0';document.getElementById('produtoPreco').value='0';document.getElementById('produtoEstoque').value='0';document.getElementById('formProdutoTitulo').textContent='Adicionar produto';document.getElementById('salvarProdutoBtn').textContent='Salvar produto';document.getElementById('cancelarEdicao').hidden=true;}
 document.getElementById('formProduto').addEventListener('submit',e=>{
  e.preventDefault();const name=document.getElementById('produtoNome').value.trim(),code=document.getElementById('produtoCodigo').value.trim(),cost=Number(document.getElementById('produtoCusto').value),price=Number(document.getElementById('produtoPreco').value),stock=Number(document.getElementById('produtoEstoque').value);
@@ -77,6 +135,6 @@ document.getElementById('formVenda').addEventListener('submit',e=>{e.preventDefa
 document.getElementById('filtroTipo').addEventListener('change',renderHistory);
 document.getElementById('limparHistorico').addEventListener('click',()=>{if(!confirm('Apagar o histórico? Os produtos e quantidades em estoque serão mantidos.'))return;data.movements=[];if(saveData())toast('Histórico apagado.');});
 document.getElementById('fazerBackup').addEventListener('click',()=>{const blob=new Blob([JSON.stringify({...data,exportedAt:new Date().toISOString()},null,2)],{type:'application/json;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`ckr-backup-${new Date().toISOString().slice(0,10)}.json`;document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);toast('Backup exportado. Guarde o arquivo em local seguro.');});
-document.getElementById('restaurarBackup').addEventListener('click',async()=>{const file=document.getElementById('arquivoBackup').files[0];if(!file){toast('Escolha um arquivo JSON primeiro.',true);return;}if(!confirm('A restauração vai substituir os dados deste dispositivo. Deseja continuar?'))return;try{const imported=JSON.parse(await file.text());if(!Array.isArray(imported.products)||!Array.isArray(imported.movements))throw Error('Formato');for(const p of imported.products){if(!p.id||!String(p.name||'').trim()||!Number.isFinite(Number(p.stock))||Number(p.stock)<0)throw Error('Produto');}data={version:2,products:imported.products,movements:imported.movements};if(saveData()){document.getElementById('arquivoBackup').value='';resetProductForm();toast('Backup restaurado com sucesso.');}}catch(err){toast('Arquivo inválido ou incompatível com o CKR Web V2.',true);}});
-document.getElementById('apagarTudo').addEventListener('click',()=>{if(!confirm('Isso apagará todos os produtos, entradas e vendas deste navegador. Continuar?'))return;if(!confirm('Confirme mais uma vez. Só será possível recuperar com backup.'))return;data=emptyData();if(saveData()){resetProductForm();toast('Dados locais apagados.');}});
+document.getElementById('restaurarBackup').addEventListener('click',async()=>{const file=document.getElementById('arquivoBackup').files[0];if(!file){toast('Escolha um arquivo JSON primeiro.',true);return;}if(!confirm('A restauração vai substituir os dados deste dispositivo. Deseja continuar?'))return;try{const imported=JSON.parse(await file.text());if(!Array.isArray(imported.products)||!Array.isArray(imported.movements))throw Error('Formato');for(const p of imported.products){if(!p.id||!String(p.name||'').trim()||!Number.isFinite(Number(p.stock))||Number(p.stock)<0)throw Error('Produto');}data={version:3,products:imported.products,movements:imported.movements,customers:Array.isArray(imported.customers)?imported.customers:[]};if(saveData()){document.getElementById('arquivoBackup').value='';resetProductForm();toast('Backup restaurado com sucesso.');}}catch(err){toast('Arquivo inválido ou incompatível com o CKR Web V2.',true);}});
+document.getElementById('apagarTudo').addEventListener('click',()=>{if(!confirm('Isso apagará todos os produtos, clientes, entradas e vendas deste navegador. Continuar?'))return;if(!confirm('Confirme mais uma vez. Só será possível recuperar com backup.'))return;data=emptyData();if(saveData()){resetProductForm();toast('Dados locais apagados.');}});
 renderAll();
