@@ -8,10 +8,34 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <section id="ckrLogin" class="ckr-login-screen"><form id="ckrLoginForm" class="ckr-login-card"><div class="ckr-login-logo">CKR</div><h1>Entrar no CKR Web</h1><p>Acesso seguro ao sistema central.</p><label class="field">E-mail<input id="ckrEmail" type="email" autocomplete="username" required></label><label class="field">Senha<input id="ckrPassword" type="password" autocomplete="current-password" required></label><button id="ckrLoginButton" class="button button-primary full-button" type="submit">Entrar</button><p id="ckrLoginError" class="error-text" role="alert"></p></form></section>
-  <div id="ckrApp" hidden>
-
-  <div class="app-shell">
+  <section id="ckrAuthGate" class="auth-gate" aria-labelledby="authTitle">
+    <div class="auth-card">
+      <div class="auth-brand"><div class="auth-brand-mark">C</div><div><strong>CKR<span>.</span></strong><small>GESTÃO INTELIGENTE</small></div></div>
+      <p class="auth-eyebrow">ACESSO AO SISTEMA</p>
+      <h1 id="authTitle">Entrar no CKR</h1>
+      <p id="authDescription" class="auth-description">Informe seu usuário e senha para continuar.</p>
+      <form id="ckrLoginForm" autocomplete="on">
+        <label for="ckrLoginUser">Usuário</label>
+        <input id="ckrLoginUser" name="username" autocomplete="username" required maxlength="60" placeholder="Digite seu usuário">
+        <label for="ckrLoginPassword">Senha</label>
+        <input id="ckrLoginPassword" name="password" type="password" autocomplete="current-password" required maxlength="120" placeholder="Digite sua senha">
+        <p id="ckrAuthError" class="auth-error" role="alert"></p>
+        <button id="ckrLoginSubmit" class="button button-primary auth-submit" type="submit">Entrar</button>
+      </form>
+      <form id="ckrSetupForm" autocomplete="off" hidden>
+        <label for="ckrSetupUser">Crie o usuário ADMIN</label>
+        <input id="ckrSetupUser" name="username" autocomplete="username" required minlength="3" maxlength="60" placeholder="Ex.: admin">
+        <label for="ckrSetupPassword">Crie uma senha (mínimo 6 caracteres)</label>
+        <input id="ckrSetupPassword" name="new-password" type="password" autocomplete="new-password" required minlength="6" maxlength="120" placeholder="Crie uma senha">
+        <label for="ckrSetupConfirm">Confirme a senha</label>
+        <input id="ckrSetupConfirm" name="confirm-password" type="password" autocomplete="new-password" required minlength="6" maxlength="120" placeholder="Digite a senha novamente">
+        <p id="ckrSetupError" class="auth-error" role="alert"></p>
+        <button class="button button-primary auth-submit" type="submit">Criar ADMIN e continuar</button>
+      </form>
+      <p class="auth-local-note">Acesso local deste navegador. Os dados do CKR continuam salvos neste dispositivo.</p>
+    </div>
+  </section>
+  <div class="app-shell" id="ckrAppShell" hidden>
     <aside class="sidebar" id="sidebar">
       <div class="brand">
         <div class="brand-mark">C</div>
@@ -29,7 +53,7 @@
         <button class="nav-link" data-panel="backup"><span class="nav-icon">⇄</span> Backup e transferência</button>
       </nav>
       <div class="sidebar-bottom">
-        <div class="local-status"><span class="status-dot"></span><div><b>CKR online</b><small id="ckrStatusText">Verificando conexão...</small></div></div>
+        <div class="local-status"><span class="status-dot"></span><div><b>Modo local</b><small>Dados deste dispositivo</small></div></div>
         <div class="sidebar-version">CKR WEB · V2.0</div>
       </div>
     </aside>
@@ -38,7 +62,7 @@
       <header class="topbar">
         <button class="mobile-menu" id="mobileMenu" aria-label="Abrir menu">☰</button>
         <div class="breadcrumb"><span>CKR</span><i>/</i><b id="pageBreadcrumb">Visão geral</b></div>
-        <div class="topbar-right"><span class="today" id="todayLabel"></span><span id="ckrUserLabel" class="ckr-user-label"></span><button id="ckrLogout" class="button button-light button-small" type="button">Sair</button><div class="avatar">CK</div></div>
+        <div class="topbar-right"><span class="today" id="todayLabel"></span><div class="avatar" id="ckrUserAvatar">AD</div><button type="button" id="ckrLogout" class="button button-secondary auth-logout">Sair</button></div>
       </header>
 
       <div class="content">
@@ -211,9 +235,6 @@
     </main>
   </div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  </div>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="app.js"></script>
-  <script>document.getElementById('ckrLoginForm').addEventListener('submit',loginCKR);document.getElementById('ckrLogout').addEventListener('click',logoutCKR);bootCKR();</script>
 </body>
 </html>
