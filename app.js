@@ -222,25 +222,47 @@ renderAll();
 addPaymentRow();
 
 
-// Autenticação local simples: protege a abertura normal da interface neste navegador.
-// Não substitui autenticação no servidor para uso online/multiusuário.
+// Login local com perfil ADMIN e usuários temporários. Não substitui autenticação no servidor.
 (function setupLocalLogin(){
- const AUTH_KEY='ckr_web_local_admin_v1';
- const SESSION_KEY='ckr_web_local_session_v1';
+ const AUTH_KEY='ckr_web_local_admin_v1', SESSION_KEY='ckr_web_local_session_v1', USERS_KEY='ckr_web_local_users_v1';
  const gate=document.getElementById('ckrAuthGate'), shell=document.getElementById('ckrAppShell');
  const loginForm=document.getElementById('ckrLoginForm'), setupForm=document.getElementById('ckrSetupForm'), showSetupButton=document.getElementById('ckrShowSetup');
  const desc=document.getElementById('authDescription'), error=document.getElementById('ckrAuthError'), setupError=document.getElementById('ckrSetupError');
  const userInput=document.getElementById('ckrLoginUser'), passInput=document.getElementById('ckrLoginPassword');
- let auth=null;
- try{auth=JSON.parse(localStorage.getItem(AUTH_KEY)||'null');}catch(e){auth=null;}
- function showLogin(){gate.hidden=false;shell.hidden=true;loginForm.hidden=false;setupForm.hidden=true;showSetupButton.hidden=false;desc.textContent='Informe seu usuário e senha para continuar.';error.textContent='';userInput.focus();}
+ const manageButton=document.getElementById('ckrManageUsers'), usersModal=document.getElementById('ckrUsersModal');
+ let admin=null, users=[], currentUser=null;
+ try{admin=JSON.parse(localStorage.getItem(AUTH_KEY)||'null');}catch(e){admin=null;}
+ try{users=JSON.parse(localStorage.getItem(USERS_KEY)||'[]');if(!Array.isArray(users))users=[];}catch(e){users=[];}
+ const saveUsers=()=>localStorage.setItem(USERS_KEY,JSON.stringify(users));
+ const normalized=s=>String(s||'').trim().toLowerCase();
+ function showLogin(){gate.hidden=false;shell.hidden=true;loginForm.hidden=false;setupForm.hidden=true;showSetupButton.hidden=!!(admin&&admin.username&&admin.password);desc.textContent='Informe seu usuário e senha para continuar.';error.textContent='';userInput.focus();}
  function showSetup(){gate.hidden=false;shell.hidden=true;loginForm.hidden=true;setupForm.hidden=false;showSetupButton.hidden=true;desc.textContent='Crie o usuário ADMIN e uma senha para este navegador.';setupError.textContent='';document.getElementById('ckrSetupUser').focus();}
- showSetupButton.addEventListener('click',()=>{if(auth&&auth.username&&auth.password&&!confirm('Isso substituirá apenas o login local salvo neste navegador. Os dados de clientes, produtos e vendas não serão apagados. Deseja continuar?'))return;try{localStorage.removeItem(AUTH_KEY);auth=null;showSetup();}catch(e){error.textContent='Não foi possível abrir a configuração neste navegador.';}});
- function enter(username){sessionStorage.setItem(SESSION_KEY,'1');gate.hidden=true;shell.hidden=false;document.getElementById('ckrUserAvatar').textContent=(username||'AD').trim().slice(0,2).toUpperCase();}
- if(!auth || !auth.username || !auth.password){showSetup();}
- else if(sessionStorage.getItem(SESSION_KEY)==='1'){enter(auth.username);}
+ showSetupButton.addEventListener('click',()=>{showSetup();});
+ function enter(user){currentUser=user;sessionStorage.setItem(SESSION_KEY,JSON.stringify({username:user.username,role:user.role}));gate.hidden=true;shell.hidden=false;document.getElementById('ckrUserAvatar').textContent=(user.username||'AD').trim().slice(0,2).toUpperCase();manageButton.hidden=user.role!=='admin';}
+ function getValidUser(username,password){
+   if(admin&&normalized(username)===normalized(admin.username)&&password===admin.password)return {username:admin.username,role:'admin'};
+   const found=users.find(u=>normalized(u.username)===normalized(username));
+   if(!found||found.password!==password)return null;
+   if(found.expiresAt && Date.now()>=new Date(found.expiresAt).getTime())return {expired:true,username:found.username};
+   return {username:found.username,role:'usuario'};
+ }
+ function renderUsers(){const list=document.getElementById('ckrUsersList');list.innerHTML='';if(!users.length){list.innerHTML='<div class="users-empty">Nenhum usuário adicional cadastrado.</div>';return;}
+   users.forEach((u,i)=>{const row=document.createElement('div');row.className='users-row';const info=document.createElement('div');const name=document.createElement('strong');name.textContent=u.username;const meta=document.createElement('small');meta.textContent=u.expiresAt?'Expira em '+new Date(u.expiresAt).toLocaleString('pt-BR'):'Prazo não definido';info.append(name,meta);const del=document.createElement('button');del.type='button';del.className='button button-danger-light';del.textContent='Excluir';del.addEventListener('click',()=>{if(currentUser?.role!=='admin')return;if(!confirm('Excluir o usuário '+u.username+'?'))return;users.splice(i,1);saveUsers();renderUsers();toast('Usuário excluído.');});row.append(info,del);list.append(row);});
+ }
+ function openUsers(){if(!currentUser||currentUser.role!=='admin'){toast('Somente o ADMIN pode gerenciar usuários.',true);return;}document.getElementById('ckrUsersError').textContent='';document.getElementById('ckrCreateUserForm').reset();renderUsers();usersModal.hidden=false;document.getElementById('ckrNewUsername').focus();}
+ function closeUsers(){usersModal.hidden=true;}
+ manageButton.addEventListener('click',openUsers);document.getElementById('ckrCloseUsers').addEventListener('click',closeUsers);usersModal.addEventListener('click',e=>{if(e.target===usersModal)closeUsers();});
+ document.getElementById('ckrCreateUserForm').addEventListener('submit',e=>{e.preventDefault();const err=document.getElementById('ckrUsersError');err.textContent='';if(!currentUser||currentUser.role!=='admin'){err.textContent='Somente o ADMIN pode criar usuários.';return;}
+   const username=document.getElementById('ckrNewUsername').value.trim(),password=document.getElementById('ckrNewPassword').value,confirmPassword=document.getElementById('ckrNewPasswordConfirm').value;
+   if(username.length<3){err.textContent='O usuário precisa ter pelo menos 3 caracteres.';return;}if(password.length<6){err.textContent='A senha precisa ter pelo menos 6 caracteres.';return;}if(password!==confirmPassword){err.textContent='As senhas não coincidem.';return;}
+   if(normalized(username)===normalized(admin.username)||users.some(u=>normalized(u.username)===normalized(username))){err.textContent='Esse nome de usuário já está cadastrado.';return;}
+   const created=Date.now(), expiry=new Date(created+182.5*24*60*60*1000).toISOString();users.push({username,password,createdAt:new Date(created).toISOString(),expiresAt:expiry});
+   try{saveUsers();renderUsers();e.target.reset();toast('Usuário criado. O acesso expira em 182,5 dias.');}catch(ex){users.pop();err.textContent='Não foi possível salvar o usuário neste navegador.';}
+ });
+ if(!admin||!admin.username||!admin.password){showSetup();}
+ else if(sessionStorage.getItem(SESSION_KEY)){try{const sess=JSON.parse(sessionStorage.getItem(SESSION_KEY));const u=getValidUser(sess.username, sess.role==='admin'?admin.password:(users.find(x=>normalized(x.username)===normalized(sess.username))||{}).password);if(u&&!u.expired)enter(u);else{sessionStorage.removeItem(SESSION_KEY);showLogin();}}catch(e){showLogin();}}
  else{showLogin();}
- setupForm.addEventListener('submit',e=>{e.preventDefault();setupError.textContent='';const username=document.getElementById('ckrSetupUser').value.trim();const password=document.getElementById('ckrSetupPassword').value;const confirm=document.getElementById('ckrSetupConfirm').value;if(username.length<3){setupError.textContent='O usuário deve ter pelo menos 3 caracteres.';return;}if(password.length<6){setupError.textContent='A senha precisa ter pelo menos 6 caracteres.';return;}if(password!==confirm){setupError.textContent='As senhas não são iguais.';return;}try{localStorage.setItem(AUTH_KEY,JSON.stringify({username:username,password:password}));auth={username,password};enter(username);toast('Administrador criado neste navegador.');}catch(err){setupError.textContent='Não foi possível salvar as credenciais neste navegador.';}});
- loginForm.addEventListener('submit',e=>{e.preventDefault();error.textContent='';const username=userInput.value.trim();const password=passInput.value;if(auth&&username.toLowerCase()===String(auth.username).toLowerCase()&&password===auth.password){passInput.value='';enter(auth.username);}else{error.textContent='Usuário ou senha incorretos.';passInput.value='';passInput.focus();}});
- document.getElementById('ckrLogout').addEventListener('click',()=>{sessionStorage.removeItem(SESSION_KEY);showLogin();passInput.value='';});
+ setupForm.addEventListener('submit',e=>{e.preventDefault();setupError.textContent='';const username=document.getElementById('ckrSetupUser').value.trim(),password=document.getElementById('ckrSetupPassword').value,confirmPassword=document.getElementById('ckrSetupConfirm').value;if(username.length<3){setupError.textContent='O usuário deve ter pelo menos 3 caracteres.';return;}if(password.length<6){setupError.textContent='A senha precisa ter pelo menos 6 caracteres.';return;}if(password!==confirmPassword){setupError.textContent='As senhas não são iguais.';return;}try{localStorage.setItem(AUTH_KEY,JSON.stringify({username,password}));admin={username,password};enter({username,role:'admin'});toast('Administrador criado neste navegador.');}catch(err){setupError.textContent='Não foi possível salvar as credenciais neste navegador.';}});
+ loginForm.addEventListener('submit',e=>{e.preventDefault();error.textContent='';const username=userInput.value.trim(),password=passInput.value,u=getValidUser(username,password);if(u&&u.expired){error.textContent='O prazo de uso deste usuário terminou. Solicite ao ADMIN um novo acesso.';passInput.value='';return;}if(u){passInput.value='';enter(u);}else{error.textContent='Usuário ou senha incorretos.';passInput.value='';passInput.focus();}});
+ document.getElementById('ckrLogout').addEventListener('click',()=>{sessionStorage.removeItem(SESSION_KEY);currentUser=null;closeUsers();showLogin();passInput.value='';});
 })();
