@@ -228,13 +228,14 @@ addPaymentRow();
  const AUTH_KEY='ckr_web_local_admin_v1';
  const SESSION_KEY='ckr_web_local_session_v1';
  const gate=document.getElementById('ckrAuthGate'), shell=document.getElementById('ckrAppShell');
- const loginForm=document.getElementById('ckrLoginForm'), setupForm=document.getElementById('ckrSetupForm');
+ const loginForm=document.getElementById('ckrLoginForm'), setupForm=document.getElementById('ckrSetupForm'), showSetupButton=document.getElementById('ckrShowSetup');
  const desc=document.getElementById('authDescription'), error=document.getElementById('ckrAuthError'), setupError=document.getElementById('ckrSetupError');
  const userInput=document.getElementById('ckrLoginUser'), passInput=document.getElementById('ckrLoginPassword');
  let auth=null;
  try{auth=JSON.parse(localStorage.getItem(AUTH_KEY)||'null');}catch(e){auth=null;}
- function showLogin(){gate.hidden=false;shell.hidden=true;loginForm.hidden=false;setupForm.hidden=true;desc.textContent='Informe seu usuário e senha para continuar.';error.textContent='';userInput.focus();}
- function showSetup(){gate.hidden=false;shell.hidden=true;loginForm.hidden=true;setupForm.hidden=false;desc.textContent='Primeiro acesso: crie as credenciais do administrador.';document.getElementById('ckrSetupUser').focus();}
+ function showLogin(){gate.hidden=false;shell.hidden=true;loginForm.hidden=false;setupForm.hidden=true;showSetupButton.hidden=false;desc.textContent='Informe seu usuário e senha para continuar.';error.textContent='';userInput.focus();}
+ function showSetup(){gate.hidden=false;shell.hidden=true;loginForm.hidden=true;setupForm.hidden=false;showSetupButton.hidden=true;desc.textContent='Crie o usuário ADMIN e uma senha para este navegador.';setupError.textContent='';document.getElementById('ckrSetupUser').focus();}
+ showSetupButton.addEventListener('click',()=>{if(auth&&auth.username&&auth.password&&!confirm('Isso substituirá apenas o login local salvo neste navegador. Os dados de clientes, produtos e vendas não serão apagados. Deseja continuar?'))return;try{localStorage.removeItem(AUTH_KEY);auth=null;showSetup();}catch(e){error.textContent='Não foi possível abrir a configuração neste navegador.';}});
  function enter(username){sessionStorage.setItem(SESSION_KEY,'1');gate.hidden=true;shell.hidden=false;document.getElementById('ckrUserAvatar').textContent=(username||'AD').trim().slice(0,2).toUpperCase();}
  if(!auth || !auth.username || !auth.password){showSetup();}
  else if(sessionStorage.getItem(SESSION_KEY)==='1'){enter(auth.username);}
