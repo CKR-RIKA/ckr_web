@@ -131,9 +131,20 @@
             <form id="formVenda" class="form-stack">
               <label class="field">Produto<select id="vendaProduto" required></select></label>
               <div class="form-two"><label class="field">Quantidade vendida<input id="vendaQuantidade" type="number" min="1" step="1" required placeholder="Ex.: 1"></label><label class="field">Valor unitário (R$)<input id="vendaPreco" type="number" min="0" step="0.01" required></label></div>
-              <label class="field">Cliente (opcional)<input id="vendaCliente" maxlength="150" list="clientesSugestoes" placeholder="Digite ou selecione um cliente"><datalist id="clientesSugestoes"></datalist></label>
-              <label class="field">Observação (opcional)<input id="vendaObs" maxlength="180" placeholder="Ex.: pagamento no Pix"></label>
-              <div class="sale-total"><span>Total da venda</span><strong id="totalVendaPreview">R$ 0,00</strong></div>
+              <label class="field">Cliente (opcional)<input id="vendaCliente" maxlength="150" list="clientesSugestoes" placeholder="Digite as primeiras letras e selecione"><datalist id="clientesSugestoes"></datalist></label>
+              <div class="sale-discounts">
+                <label class="field">Desconto em reais (R$)<input id="vendaDescontoReais" type="number" min="0" step="0.01" value="0"></label>
+                <label class="field">Desconto (%)<input id="vendaDescontoPercentual" type="number" min="0" max="100" step="0.01" value="0"></label>
+              </div>
+              <div class="sale-total"><span>Subtotal</span><strong id="subtotalVendaPreview">R$ 0,00</strong></div>
+              <div class="sale-total sale-total-discount"><span>Total com desconto</span><strong id="totalVendaPreview">R$ 0,00</strong></div>
+              <section class="payment-box">
+                <div class="payment-heading"><div><h3>Formas de pagamento</h3><p>Adicione uma linha para cada pagamento.</p></div><button class="button button-light button-small" id="adicionarPagamento" type="button">＋ Adicionar</button></div>
+                <div id="linhasPagamento" class="payment-lines"></div>
+                <div class="payment-summary"><div><span>Total recebido</span><strong id="totalRecebido">R$ 0,00</strong></div><div><span>Saldo restante</span><strong id="saldoRestante">R$ 0,00</strong></div></div>
+                <p id="avisoPagamento" class="payment-notice">Informe as formas de pagamento até completar o total da venda.</p>
+              </section>
+              <label class="field">Observação (opcional)<input id="vendaObs" maxlength="180" placeholder="Observação da venda"></label>
               <button class="button button-primary full-button" type="submit">Confirmar venda <span>→</span></button>
             </form>
           </section>
