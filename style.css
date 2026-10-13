@@ -92,3 +92,19 @@
 #panel-dashboard .dot-ok{background:#16a36a}.dot-low{background:#f59e0b}.dot-zero{background:#ef4444}
 @media(max-width:1100px){#panel-dashboard .dashboard-insights{grid-template-columns:1fr!important}#panel-dashboard .stock-chart-layout{min-height:220px!important}}
 @media(max-width:560px){#panel-dashboard .insight-card{padding:15px!important}#panel-dashboard .sales-chart{height:225px!important;min-height:225px!important}#panel-dashboard .stock-chart-layout{gap:16px!important;justify-content:space-around!important}#panel-dashboard .stock-donut{width:130px!important;height:130px!important;flex-basis:130px!important}#panel-dashboard .stock-donut:before{inset:14px!important}#panel-dashboard .stock-legend{min-width:115px!important;gap:13px!important}#panel-dashboard .stock-legend>div{font-size:10px!important}}
+
+/* Correção definitiva dos gráficos no desktop: dimensões explícitas e layout isolado */
+#panel-dashboard .dashboard-insights{display:grid!important;grid-template-columns:minmax(0,1.55fr) minmax(340px,1fr)!important;align-items:stretch!important}
+#panel-dashboard .insight-card{min-width:0!important;overflow:hidden!important}
+#panel-dashboard #dashboardSalesChart{display:block!important;width:100%!important;height:280px!important;min-height:280px!important;overflow-x:auto!important;overflow-y:hidden!important;position:relative!important}
+#panel-dashboard #dashboardSalesChart .sales-line-svg{display:block!important;width:100%!important;min-width:620px!important;height:265px!important;min-height:265px!important;max-width:none!important;overflow:visible!important}
+#panel-dashboard .stock-chart-layout{display:flex!important;flex-wrap:nowrap!important;align-items:center!important;justify-content:space-evenly!important;min-height:265px!important;width:100%!important;gap:22px!important}
+#panel-dashboard .stock-donut{position:relative!important;display:grid!important;place-items:center!important;flex:0 0 172px!important;width:172px!important;height:172px!important;min-width:172px!important;border-radius:50%!important}
+#panel-dashboard .stock-donut:before{content:""!important;position:absolute!important;inset:18px!important;border-radius:50%!important;background:#fff!important;z-index:0!important}
+#panel-dashboard .stock-donut-center{position:relative!important;z-index:2!important;display:flex!important;flex-direction:column!important;align-items:center!important;justify-content:center!important;gap:3px!important;white-space:nowrap!important}
+#panel-dashboard .stock-donut-center strong{display:block!important;line-height:1.1!important;font-size:28px!important}
+#panel-dashboard .stock-donut-center span{display:block!important;line-height:1.3!important}
+#panel-dashboard .stock-legend{display:grid!important;flex:1 1 140px!important;min-width:130px!important;gap:16px!important}
+#panel-dashboard .stock-legend>div{display:grid!important;grid-template-columns:10px minmax(75px,1fr) auto!important;align-items:center!important;gap:8px!important;white-space:nowrap!important}
+@media(max-width:1100px){#panel-dashboard .dashboard-insights{grid-template-columns:1fr!important}}
+@media(max-width:600px){#panel-dashboard #dashboardSalesChart{height:235px!important;min-height:235px!important}#panel-dashboard #dashboardSalesChart .sales-line-svg{height:225px!important;min-height:225px!important;min-width:560px!important}#panel-dashboard .stock-chart-layout{gap:12px!important;justify-content:space-around!important}#panel-dashboard .stock-donut{flex-basis:130px!important;width:130px!important;height:130px!important;min-width:130px!important}#panel-dashboard .stock-donut:before{inset:14px!important}#panel-dashboard .stock-legend{min-width:115px!important;gap:12px!important}#panel-dashboard .stock-legend>div{grid-template-columns:8px minmax(65px,1fr) auto!important;font-size:10px!important}}
