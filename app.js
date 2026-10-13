@@ -1,80 +1,12 @@
 'use strict';
-// Configuração pública do projeto Supabase. Nunca coloque a chave service_role no navegador.
-const SUPABASE_URL = 'https://inqkztkioirknlonrfih.supabase.co';
-const SUPABASE_ANON_KEY = 'sb_publishable_jHWCmSATCJYlRRJAetz5EA_u6xy7gOj';
-const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const STORAGE_KEY = 'ckr_estoque_web_v2';
-let data = emptyData();
+let data = loadData();
 let editingId = null;
 let toastTimer;
-let ckrProfile = null;
-let cloudReady = false;
-let cloudSaving = false;
+
 function emptyData(){return {version:3,products:[],movements:[],customers:[]};}
 function loadData(){try{const raw=localStorage.getItem(STORAGE_KEY);if(!raw)return emptyData();const parsed=JSON.parse(raw);if(!Array.isArray(parsed.products)||!Array.isArray(parsed.movements))return emptyData();if(!Array.isArray(parsed.customers))parsed.customers=[];return parsed;}catch(e){return emptyData();}}
-function isAdmin(){return ckrProfile?.papel==='admin';}
-function saveData(){
- try { localStorage.setItem(STORAGE_KEY,JSON.stringify(data)); renderAll(); }
- catch(e){toast('Não foi possível salvar os dados locais.',true);return false;}
- if(cloudReady) syncToCloud().catch(e=>toast('Falha ao sincronizar com o banco central: '+(e.message||e),true));
- return true;
-}
-async function syncToCloud(){
- if(!cloudReady||cloudSaving)return; cloudSaving=true;
- try {
-  if(isAdmin()){
-   const products=data.products.map(p=>({id:String(p.id),nome:p.name,codigo:String(p.code||''),custo:Number(p.cost||0),preco:Number(p.price||0),estoque:Number(p.stock||0),atualizado_em:new Date().toISOString()}));
-   if(products.length){const {error}=await sb.from('ckr_produtos').upsert(products);if(error)throw error;}
-   const {data:existingProducts,error:pe}=await sb.from('ckr_produtos').select('id');if(pe)throw pe;
-   const keep=new Set(data.products.map(p=>String(p.id)));const remove=(existingProducts||[]).filter(p=>!keep.has(String(p.id))).map(p=>p.id);
-   if(remove.length){const {error}=await sb.from('ckr_produtos').delete().in('id',remove);if(error)throw error;}
-  } else {
-   // Usuário comum não pode alterar cadastro de produtos. Sincroniza apenas estoque já alterado por venda/entrada
-   // por coluna autorizada no SQL; dados de catálogo continuam sob controle do ADMIN.
-   for(const p of data.products){const {error}=await sb.from('ckr_produtos').update({estoque:Number(p.stock||0),atualizado_em:new Date().toISOString()}).eq('id',String(p.id));if(error)throw error;}
-  }
-  const customers=(data.customers||[]).map(c=>({id:String(c.id),dados:c,atualizado_em:new Date().toISOString()}));
-  if(customers.length){const {error}=await sb.from('ckr_clientes').upsert(customers);if(error)throw error;}
-  const {data:existingCustomers,error:ce}=await sb.from('ckr_clientes').select('id');if(ce)throw ce;
-  const customerKeep=new Set((data.customers||[]).map(c=>String(c.id)));const customerRemove=(existingCustomers||[]).filter(c=>!customerKeep.has(String(c.id))).map(c=>c.id);
-  if(customerRemove.length){const {error}=await sb.from('ckr_clientes').delete().in('id',customerRemove);if(error)throw error;}
-  const movements=data.movements.map(m=>({id:String(m.id),tipo:m.type==='venda'?'venda':'entrada',dados:m,criado_em:m.date||new Date().toISOString()}));
-  if(movements.length){const {error}=await sb.from('ckr_movimentacoes').upsert(movements);if(error)throw error;}
- } finally {cloudSaving=false;}
-}
-async function loadCloudData(){
- const [pr,cu,mv]=await Promise.all([sb.from('ckr_produtos').select('*'),sb.from('ckr_clientes').select('*'),sb.from('ckr_movimentacoes').select('*').order('criado_em',{ascending:false})]);
- for(const r of [pr,cu,mv])if(r.error)throw r.error;
- data={version:3,products:(pr.data||[]).map(p=>({id:p.id,name:p.nome,code:p.codigo||'',cost:Number(p.custo||0),price:Number(p.preco||0),stock:Number(p.estoque||0)})),customers:(cu.data||[]).map(c=>({...c.dados,id:c.id})),movements:(mv.data||[]).map(m=>m.dados||{})};
- localStorage.setItem(STORAGE_KEY,JSON.stringify(data));renderAll();
-}
-async function bootCKR(){
- const sessionResult=await sb.auth.getSession();const session=sessionResult.data?.session;
- if(!session){showLogin();return;}
- const {data:profile,error}=await sb.from('ckr_perfis').select('nome,papel,ativo,data_expiracao').eq('user_id',session.user.id).maybeSingle();
- if(error||!profile||!profile.ativo||(profile.data_expiracao&&new Date(profile.data_expiracao)<=new Date())){await sb.auth.signOut();showLogin('Usuário sem permissão ou com acesso vencido.');return;}
- ckrProfile=profile;cloudReady=true;document.getElementById('ckrLogin').hidden=true;document.getElementById('ckrApp').hidden=false;
- document.getElementById('ckrUserLabel').textContent=(profile.nome||session.user.email)+' · '+(isAdmin()?'ADMIN':'USUÁRIO');
- document.getElementById('ckrStatusText').textContent='Banco central conectado';
- if(!isAdmin()){
-  document.querySelectorAll('.nav-link').forEach(b=>{if(!['clientes','venda'].includes(b.dataset.panel))b.hidden=true;});
-  document.querySelectorAll('[data-go]').forEach(b=>{if(!['clientes','venda'].includes(b.dataset.go))b.hidden=true;});
-  goTo('clientes');
- }
- if(isAdmin())buildAdminPanel();
- try{await loadCloudData();}catch(e){cloudReady=false;toast('Não foi possível carregar o banco central: '+e.message,true);}
-}
-function showLogin(message='') { document.getElementById('ckrLogin').hidden=false;document.getElementById('ckrApp').hidden=true;document.getElementById('ckrLoginError').textContent=message; }
-async function loginCKR(e){e.preventDefault();const btn=document.getElementById('ckrLoginButton');btn.disabled=true;try{const email=document.getElementById('ckrEmail').value.trim(),password=document.getElementById('ckrPassword').value;const {error}=await sb.auth.signInWithPassword({email,password});if(error)throw error;await bootCKR();}catch(err){showLogin('Não foi possível entrar. Confira e-mail, senha e validade do usuário.');}finally{btn.disabled=false;}}
-async function logoutCKR(){cloudReady=false;ckrProfile=null;await sb.auth.signOut();location.reload();}
-function buildAdminPanel(){
- const nav=document.querySelector('.sidebar nav');if(!document.getElementById('navAdminUsers')){const b=document.createElement('button');b.className='nav-link';b.id='navAdminUsers';b.textContent='♙ Gerenciar usuários';b.onclick=()=>openAdminUsers();nav.appendChild(b);}
-}
-async function openAdminUsers(){
- let panel=document.getElementById('ckrAdminUsers');if(!panel){panel=document.createElement('section');panel.id='ckrAdminUsers';panel.className='panel';panel.innerHTML=`<div class="page-heading"><h1>Gerenciar usuários</h1><p>Criar usuários com 60 dias, 90 dias ou acesso definitivo.</p></div><section class="surface" style="padding:22px"><form id="ckrCreateUser" class="form-grid"><label class="field">Nome<input id="newUserName" required></label><label class="field">E-mail<input id="newUserEmail" type="email" required></label><label class="field">Senha inicial (mínimo 8 caracteres)<input id="newUserPassword" type="password" minlength="8" required></label><label class="field">Validade<select id="newUserDays"><option value="60">60 dias</option><option value="90">90 dias</option><option value="">Definitivo</option></select></label><button class="button button-primary" type="submit">Criar usuário</button></form><p id="ckrAdminMessage" role="status"></p><p>Para criar usuários, publique a função segura indicada nas instruções e configure o segredo do servidor.</p></section>`;document.querySelector('.content').appendChild(panel);panel.querySelector('form').onsubmit=createCKRUser;}
- document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active',p===panel));document.querySelectorAll('.nav-link').forEach(b=>b.classList.toggle('active',b.id==='navAdminUsers'));document.getElementById('pageBreadcrumb').textContent='Gerenciar usuários';
-}
-async function createCKRUser(e){e.preventDefault();const msg=document.getElementById('ckrAdminMessage');msg.textContent='Criando...';try{const {data:{session}}=await sb.auth.getSession();const {data,error}=await sb.functions.invoke('admin-criar-usuario',{body:{nome:document.getElementById('newUserName').value.trim(),email:document.getElementById('newUserEmail').value.trim(),senha:document.getElementById('newUserPassword').value,dias:document.getElementById('newUserDays').value===''?null:Number(document.getElementById('newUserDays').value)}});if(error)throw error;if(data?.error)throw new Error(data.error);msg.textContent='Usuário criado com sucesso.';e.target.reset();}catch(err){msg.textContent='Não foi possível criar: '+(err.message||'verifique a função no Supabase');}}
+function saveData(){try{localStorage.setItem(STORAGE_KEY,JSON.stringify(data));renderAll();return true;}catch(e){toast('Não foi possível salvar. Verifique o espaço disponível no navegador.',true);return false;}}
 function id(){return (crypto&&crypto.randomUUID)?crypto.randomUUID():`${Date.now()}-${Math.random().toString(16).slice(2)}`;}
 function money(n){return Number(n||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});}
 function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
@@ -288,3 +220,26 @@ document.getElementById('imprimirRelatorio').addEventListener('click',()=>{rende
 const reportToday=new Date();document.getElementById('relatorioDataInicio').value=`${reportToday.getFullYear()}-${String(reportToday.getMonth()+1).padStart(2,'0')}-01`;document.getElementById('relatorioDataFim').value=localDateKey(reportToday);
 renderAll();
 addPaymentRow();
+
+
+// Autenticação local simples: protege a abertura normal da interface neste navegador.
+// Não substitui autenticação no servidor para uso online/multiusuário.
+(function setupLocalLogin(){
+ const AUTH_KEY='ckr_web_local_admin_v1';
+ const SESSION_KEY='ckr_web_local_session_v1';
+ const gate=document.getElementById('ckrAuthGate'), shell=document.getElementById('ckrAppShell');
+ const loginForm=document.getElementById('ckrLoginForm'), setupForm=document.getElementById('ckrSetupForm');
+ const desc=document.getElementById('authDescription'), error=document.getElementById('ckrAuthError'), setupError=document.getElementById('ckrSetupError');
+ const userInput=document.getElementById('ckrLoginUser'), passInput=document.getElementById('ckrLoginPassword');
+ let auth=null;
+ try{auth=JSON.parse(localStorage.getItem(AUTH_KEY)||'null');}catch(e){auth=null;}
+ function showLogin(){gate.hidden=false;shell.hidden=true;loginForm.hidden=false;setupForm.hidden=true;desc.textContent='Informe seu usuário e senha para continuar.';error.textContent='';userInput.focus();}
+ function showSetup(){gate.hidden=false;shell.hidden=true;loginForm.hidden=true;setupForm.hidden=false;desc.textContent='Primeiro acesso: crie as credenciais do administrador.';document.getElementById('ckrSetupUser').focus();}
+ function enter(username){sessionStorage.setItem(SESSION_KEY,'1');gate.hidden=true;shell.hidden=false;document.getElementById('ckrUserAvatar').textContent=(username||'AD').trim().slice(0,2).toUpperCase();}
+ if(!auth || !auth.username || !auth.password){showSetup();}
+ else if(sessionStorage.getItem(SESSION_KEY)==='1'){enter(auth.username);}
+ else{showLogin();}
+ setupForm.addEventListener('submit',e=>{e.preventDefault();setupError.textContent='';const username=document.getElementById('ckrSetupUser').value.trim();const password=document.getElementById('ckrSetupPassword').value;const confirm=document.getElementById('ckrSetupConfirm').value;if(username.length<3){setupError.textContent='O usuário deve ter pelo menos 3 caracteres.';return;}if(password.length<6){setupError.textContent='A senha precisa ter pelo menos 6 caracteres.';return;}if(password!==confirm){setupError.textContent='As senhas não são iguais.';return;}try{localStorage.setItem(AUTH_KEY,JSON.stringify({username:username,password:password}));auth={username,password};enter(username);toast('Administrador criado neste navegador.');}catch(err){setupError.textContent='Não foi possível salvar as credenciais neste navegador.';}});
+ loginForm.addEventListener('submit',e=>{e.preventDefault();error.textContent='';const username=userInput.value.trim();const password=passInput.value;if(auth&&username.toLowerCase()===String(auth.username).toLowerCase()&&password===auth.password){passInput.value='';enter(auth.username);}else{error.textContent='Usuário ou senha incorretos.';passInput.value='';passInput.focus();}});
+ document.getElementById('ckrLogout').addEventListener('click',()=>{sessionStorage.removeItem(SESSION_KEY);showLogin();passInput.value='';});
+})();
