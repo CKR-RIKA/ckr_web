@@ -21,7 +21,7 @@ document.getElementById('mobileMenu').addEventListener('click',()=>document.getE
 document.getElementById('closeNotice').addEventListener('click',()=>document.querySelector('.notice').style.display='none');
 document.getElementById('todayLabel').textContent=new Date().toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'short',year:'numeric'});
 
-function renderAll(){renderStats();renderProducts();renderSelects();renderHistory();renderRecent();renderCustomers();}
+function renderAll(){renderStats();renderProducts();renderSelects();renderHistory();renderRecent();renderCustomers();renderDashboardInsights();renderDateReport();}
 function renderStats(){
  document.getElementById('totalProdutos').textContent=data.products.length;
  document.getElementById('menuProdutos').textContent=data.products.length;
@@ -52,6 +52,28 @@ function renderRecent(){
  const list=data.movements.slice(0,5);
  document.getElementById('recentRows').innerHTML=list.map(m=>`<tr><td><span class="pill ${m.type}">${m.type==='venda'?'Venda':'Entrada'}</span></td><td><span class="product-name">${esc(m.productName)}</span></td><td>${m.type==='venda'?'−':'+'}${Number(m.quantity)}</td><td>${money(m.total)}</td><td>${esc(dateText(m.date))}</td></tr>`).join('');
  document.getElementById('recentEmpty').style.display=list.length?'none':'block';
+}
+
+function localDateKey(value){const d=new Date(value);if(Number.isNaN(d.getTime()))return '';return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
+function renderDashboardInsights(){
+ const now=new Date(),days=[];
+ for(let i=6;i>=0;i--){const d=new Date(now);d.setHours(0,0,0,0);d.setDate(d.getDate()-i);const key=localDateKey(d);const total=data.movements.filter(m=>m.type==='venda'&&localDateKey(m.date)===key).reduce((s,m)=>s+Number(m.total||0),0);days.push({key,label:d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}),total});}
+ const max=Math.max(1,...days.map(x=>x.total));document.getElementById('dashboardSalesChart').innerHTML=days.map(d=>`<div class="sales-bar-wrap" title="${d.label}: ${esc(money(d.total))}"><span class="sales-bar-value">${d.total?esc(money(d.total)):'—'}</span><div class="sales-bar-track"><div class="sales-bar" style="height:${Math.max(3,d.total/max*100)}%"></div></div><span class="sales-bar-label">${d.label}</span></div>`).join('');
+ document.getElementById('dashboardVendasTotal').textContent=money(days.reduce((s,d)=>s+d.total,0));
+ document.getElementById('estoqueZerado').textContent=data.products.filter(p=>Number(p.stock)<=0).length;
+ document.getElementById('estoqueBaixo').textContent=data.products.filter(p=>Number(p.stock)>0&&Number(p.stock)<=2).length;
+ document.getElementById('estoqueEmDia').textContent=data.products.filter(p=>Number(p.stock)>2).length;
+}
+function getDateReportRows(){
+ const start=document.getElementById('relatorioDataInicio').value,end=document.getElementById('relatorioDataFim').value,type=document.getElementById('relatorioTipo').value;
+ return data.movements.filter(m=>{const day=localDateKey(m.date);return (!start||day>=start)&&(!end||day<=end)&&(type==='todos'||m.type===type);}).sort((a,b)=>new Date(b.date)-new Date(a.date));
+}
+function renderDateReport(){
+ const rows=getDateReportRows(),sales=rows.filter(m=>m.type==='venda').reduce((s,m)=>s+Number(m.total||0),0),entries=rows.filter(m=>m.type==='entrada').reduce((s,m)=>s+Number(m.total||0),0);
+ const el=id=>document.getElementById(id);if(!el('relatorioRows'))return;
+ el('relatorioTotalVendas').textContent=money(sales);el('relatorioTotalEntradas').textContent=money(entries);el('relatorioQtd').textContent=rows.length;
+ const start=el('relatorioDataInicio').value,end=el('relatorioDataFim').value;el('relatorioDescricao').textContent=`${start?new Date(start+'T12:00:00').toLocaleDateString('pt-BR'):'Desde o início'} até ${end?new Date(end+'T12:00:00').toLocaleDateString('pt-BR'):'hoje'} · ${rows.length} registro(s)`;
+ el('relatorioRows').innerHTML=rows.map(m=>`<tr><td>${esc(dateText(m.date))}</td><td><span class="pill ${m.type}">${m.type==='venda'?'Venda':'Entrada'}</span></td><td><span class="product-name">${esc(m.productName)}</span></td><td>${Number(m.quantity)}</td><td>${money(m.total)}</td><td>${esc([m.client?`Cliente: ${m.client}`:'',m.details||''].filter(Boolean).join(' · ')||'—')}</td></tr>`).join('');el('relatorioVazio').style.display=rows.length?'none':'block';
 }
 
 let editingCustomerId = null;
@@ -179,5 +201,11 @@ document.getElementById('limparHistorico').addEventListener('click',()=>{if(!con
 document.getElementById('fazerBackup').addEventListener('click',()=>{const blob=new Blob([JSON.stringify({...data,exportedAt:new Date().toISOString()},null,2)],{type:'application/json;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`ckr-backup-${new Date().toISOString().slice(0,10)}.json`;document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);toast('Backup exportado. Guarde o arquivo em local seguro.');});
 document.getElementById('restaurarBackup').addEventListener('click',async()=>{const file=document.getElementById('arquivoBackup').files[0];if(!file){toast('Escolha um arquivo JSON primeiro.',true);return;}if(!confirm('A restauração vai substituir os dados deste dispositivo. Deseja continuar?'))return;try{const imported=JSON.parse(await file.text());if(!Array.isArray(imported.products)||!Array.isArray(imported.movements))throw Error('Formato');for(const p of imported.products){if(!p.id||!String(p.name||'').trim()||!Number.isFinite(Number(p.stock))||Number(p.stock)<0)throw Error('Produto');}data={version:3,products:imported.products,movements:imported.movements,customers:Array.isArray(imported.customers)?imported.customers:[]};if(saveData()){document.getElementById('arquivoBackup').value='';resetProductForm();toast('Backup restaurado com sucesso.');}}catch(err){toast('Arquivo inválido ou incompatível com o CKR Web V2.',true);}});
 document.getElementById('apagarTudo').addEventListener('click',()=>{if(!confirm('Isso apagará todos os produtos, clientes, entradas e vendas deste navegador. Continuar?'))return;if(!confirm('Confirme mais uma vez. Só será possível recuperar com backup.'))return;data=emptyData();if(saveData()){resetProductForm();toast('Dados locais apagados.');}});
+document.getElementById('gerarRelatorio').addEventListener('click',()=>{const a=document.getElementById('relatorioDataInicio').value,b=document.getElementById('relatorioDataFim').value;if(a&&b&&a>b){toast('A data inicial não pode ser posterior à data final.',true);return;}renderDateReport();});
+['relatorioDataInicio','relatorioDataFim','relatorioTipo'].forEach(k=>document.getElementById(k).addEventListener('change',renderDateReport));
+document.getElementById('exportarRelatorioCsv').addEventListener('click',()=>{const rows=getDateReportRows();const cell=v=>'"'+String(v??'').replace(/"/g,'""')+'"';const lines=[['Data e hora','Tipo','Produto','Quantidade','Valor','Cliente','Detalhes'].map(cell).join(';'),...rows.map(m=>[dateText(m.date),m.type==='venda'?'Venda':'Entrada',m.productName,m.quantity,Number(m.total||0).toFixed(2).replace('.',','),m.client||'',m.details||''].map(cell).join(';'))];const blob=new Blob(['\ufeff'+lines.join('\r\n')],{type:'text/csv;charset=utf-8;'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`ckr-relatorio-${document.getElementById('relatorioDataInicio').value||'inicio'}-${document.getElementById('relatorioDataFim').value||'hoje'}.csv`;document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);});
+document.getElementById('imprimirRelatorio').addEventListener('click',()=>{renderDateReport();window.print();});
+// Período padrão: mês atual
+const reportToday=new Date();document.getElementById('relatorioDataInicio').value=`${reportToday.getFullYear()}-${String(reportToday.getMonth()+1).padStart(2,'0')}-01`;document.getElementById('relatorioDataFim').value=localDateKey(reportToday);
 renderAll();
 addPaymentRow();
