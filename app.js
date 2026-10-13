@@ -58,12 +58,23 @@ function localDateKey(value){const d=new Date(value);if(Number.isNaN(d.getTime()
 function renderDashboardInsights(){
  const now=new Date(),days=[];
  for(let i=6;i>=0;i--){const d=new Date(now);d.setHours(0,0,0,0);d.setDate(d.getDate()-i);const key=localDateKey(d);const total=data.movements.filter(m=>m.type==='venda'&&localDateKey(m.date)===key).reduce((s,m)=>s+Number(m.total||0),0);days.push({key,label:d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}),total});}
- const max=Math.max(1,...days.map(x=>x.total));document.getElementById('dashboardSalesChart').innerHTML=days.map(d=>`<div class="sales-bar-wrap" title="${d.label}: ${esc(money(d.total))}"><span class="sales-bar-value">${d.total?esc(money(d.total)):'—'}</span><div class="sales-bar-track"><div class="sales-bar" style="height:${Math.max(3,d.total/max*100)}%"></div></div><span class="sales-bar-label">${d.label}</span></div>`).join('');
+ const max=Math.max(1,...days.map(x=>x.total)),w=700,h=250,left=58,right=18,top=22,bottom=42,plotW=w-left-right,plotH=h-top-bottom;
+ const x=i=>left+(days.length===1?plotW/2:i*plotW/(days.length-1));
+ const y=v=>top+plotH-(v/max)*plotH;
+ const grid=[0,.25,.5,.75,1].map(fr=>{const val=max*fr,yy=top+plotH-plotH*fr;return `<line x1="${left}" y1="${yy}" x2="${w-right}" y2="${yy}" stroke="#e8edf5" stroke-width="1"/><text x="${left-10}" y="${yy+4}" text-anchor="end" fill="#8290a5" font-size="11">${fr===0?'R$ 0':esc(shortMoney(val))}</text>`}).join('');
+ const points=days.map((d,i)=>`${x(i)},${y(d.total)}`).join(' ');
+ const area=`${x(0)},${top+plotH} ${points} ${x(days.length-1)},${top+plotH}`;
+ const marks=days.map((d,i)=>`<circle cx="${x(i)}" cy="${y(d.total)}" r="5" fill="#fff" stroke="#3568f5" stroke-width="3"><title>${d.label}: ${esc(money(d.total))}</title></circle><text x="${x(i)}" y="${h-15}" text-anchor="middle" fill="#74839a" font-size="11">${d.label}</text>`).join('');
+ document.getElementById('dashboardSalesChart').innerHTML=`<svg class="sales-line-svg" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-label="Vendas por dia">${grid}<polygon points="${area}" fill="#3568f5" opacity=".09"/><polyline points="${points}" fill="none" stroke="#3568f5" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>${marks}</svg>`;
  document.getElementById('dashboardVendasTotal').textContent=money(days.reduce((s,d)=>s+d.total,0));
- document.getElementById('estoqueZerado').textContent=data.products.filter(p=>Number(p.stock)<=0).length;
- document.getElementById('estoqueBaixo').textContent=data.products.filter(p=>Number(p.stock)>0&&Number(p.stock)<=2).length;
- document.getElementById('estoqueEmDia').textContent=data.products.filter(p=>Number(p.stock)>2).length;
+ const zero=data.products.filter(p=>Number(p.stock)<=0).length,low=data.products.filter(p=>Number(p.stock)>0&&Number(p.stock)<=2).length,ok=data.products.filter(p=>Number(p.stock)>2).length,total=data.products.length;
+ document.getElementById('estoqueZerado').textContent=zero;document.getElementById('estoqueBaixo').textContent=low;document.getElementById('estoqueEmDia').textContent=ok;
+ document.getElementById('stockDonutTotal').textContent=total;
+ const okPct=total?ok/total*100:0,lowPct=total?low/total*100:0,zeroPct=total?zero/total*100:0;
+ document.getElementById('stockDonut').style.background=total?`conic-gradient(#16a36a 0 ${okPct}%, #f59e0b ${okPct}% ${okPct+lowPct}%, #ef4444 ${okPct+lowPct}% 100%)`:'#e8edf5';
 }
+function shortMoney(n){const v=Number(n||0);if(v>=1000000)return `R$ ${(v/1000000).toLocaleString('pt-BR',{maximumFractionDigits:1})} mi`;if(v>=1000)return `R$ ${(v/1000).toLocaleString('pt-BR',{maximumFractionDigits:1})} mil`;return `R$ ${Math.round(v).toLocaleString('pt-BR')}`;}
+
 function getDateReportRows(){
  const start=document.getElementById('relatorioDataInicio').value,end=document.getElementById('relatorioDataFim').value,type=document.getElementById('relatorioTipo').value;
  return data.movements.filter(m=>{const day=localDateKey(m.date);return (!start||day>=start)&&(!end||day<=end)&&(type==='todos'||m.type===type);}).sort((a,b)=>new Date(b.date)-new Date(a.date));
