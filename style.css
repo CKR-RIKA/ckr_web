@@ -30,3 +30,26 @@
  .cep-row{flex-direction:column}
  .cep-row .button{width:100%}
 }
+
+
+/* Venda: descontos e pagamentos combinados */
+.sale-discounts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.sale-total-discount{border:1px solid #dbeafe;background:#f5f9ff}
+.payment-box{border:1px solid var(--border,#e3e8f0);border-radius:14px;padding:16px;display:grid;gap:14px;background:var(--surface,#fff)}
+.payment-heading{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.payment-heading h3{margin:0;font-size:1rem}
+.payment-heading p{margin:4px 0 0;color:var(--muted,#667085);font-size:.85rem}
+.payment-lines{display:grid;gap:12px}
+.payment-row{padding:12px;border:1px solid var(--border,#e3e8f0);border-radius:12px;background:#fbfcfe;display:grid;gap:10px}
+.payment-row-main{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(120px,.8fr) 34px;gap:10px;align-items:end}
+.payment-card-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.payment-card-options[hidden]{display:none}
+.payment-remove{height:40px;width:34px;border:1px solid #f1c6c6;background:#fff5f5;color:#b42318;border-radius:9px;font-size:1.25rem;cursor:pointer}
+.payment-summary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.payment-summary>div{padding:12px;border-radius:10px;background:#f5f7fb;display:grid;gap:5px}
+.payment-summary span{font-size:.8rem;color:var(--muted,#667085)}
+.payment-summary strong{font-size:1rem}
+.payment-notice{margin:0;padding:10px 12px;border-radius:9px;background:#fff7e8;color:#8a4b08;font-size:.88rem}
+.payment-notice.payment-ok{background:#ecfdf3;color:#027a48}
+.payment-notice.payment-error{background:#fef3f2;color:#b42318}
+@media(max-width:520px){.sale-discounts,.payment-card-options,.payment-summary{grid-template-columns:1fr}.payment-row-main{grid-template-columns:1fr 1fr 32px}.payment-heading{align-items:flex-start;flex-direction:column}}
