@@ -141,5 +141,7 @@
 #ckrUsersModal[hidden], #ckrAuthGate[hidden], #ckrAppShell[hidden] { display: none !important; }
 
 
-/* Respeita o atributo hidden mesmo em elementos com display definido por classes */
-[hidden]{display:none!important}
+/* Prazo de acesso: exibido somente para usuários comuns */
+.expiry-status{margin:2px 12px 10px;padding:8px 10px;border-radius:8px;background:rgba(255,255,255,.08);color:#dbeafe;font-size:12px;line-height:1.35;font-weight:600;}
+.expiry-status.expired{color:#fecaca;background:rgba(220,38,38,.14);}
+[hidden]{display:none!important;}
