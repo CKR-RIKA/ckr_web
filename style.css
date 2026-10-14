@@ -145,3 +145,16 @@
 .expiry-status{margin:2px 12px 10px;padding:8px 10px;border-radius:8px;background:rgba(255,255,255,.08);color:#dbeafe;font-size:12px;line-height:1.35;font-weight:600;}
 .expiry-status.expired{color:#fecaca;background:rgba(220,38,38,.14);}
 [hidden]{display:none!important;}
+
+
+/* Ajuste responsivo adicional: login em monitores e celulares */
+.auth-gate{box-sizing:border-box;width:100%;min-width:0;padding:clamp(12px,2.5vw,32px);}
+.auth-card{box-sizing:border-box;flex:0 1 1100px;width:min(100%,1100px);max-width:1100px;min-width:0;padding:clamp(28px,4.5vw,52px) clamp(24px,5vw,60px) clamp(26px,4vw,42px) calc(46.5% + clamp(24px,4.5vw,54px));}
+.auth-card form{display:block;width:100%;min-width:0;max-width:100%;}
+.auth-card label{display:block;width:100%;max-width:100%;overflow-wrap:anywhere;}
+.auth-card input,.auth-card .auth-submit,.auth-card .auth-create-link{display:block;width:100%;max-width:100%;min-width:0;box-sizing:border-box;}
+.auth-card h1,.auth-card p,.auth-card label{overflow-wrap:anywhere;}
+@media (min-width:761px){.auth-card{min-height:590px}.auth-card:before{width:46.5%}.auth-card:after{left:clamp(24px,4vw,44px);width:39%;font-size:clamp(24px,3vw,36px)}.auth-card form,.auth-card #ckrSetupForm{max-width:440px}}
+@media (max-width:900px) and (min-width:761px){.auth-card{padding-left:calc(46.5% + 24px);padding-right:24px}.auth-card:after{left:22px;font-size:clamp(21px,2.7vw,28px)}.auth-card h1{font-size:clamp(25px,3vw,32px)}}
+@media (max-width:760px){.auth-gate{padding:14px;align-items:center;justify-content:center}.auth-card{flex:0 1 470px;width:min(100%,470px);max-width:470px;min-height:0;padding:29px 25px 25px}.auth-card:before{left:0;right:0;top:0;bottom:auto;width:100%;height:8px}.auth-card:after{display:none}.auth-card form,.auth-card #ckrSetupForm{max-width:none}.auth-card h1{font-size:28px}}
+@media (max-width:380px){.auth-card{padding:24px 19px 21px}.auth-card h1{font-size:25px}}
