@@ -3,6 +3,7 @@ const STORAGE_KEY = 'ckr_estoque_web_v2';
 let data = loadData();
 let editingId = null;
 let toastTimer;
+let saleCart = [];
 
 function emptyData(){return {version:3,products:[],movements:[],customers:[]};}
 function loadData(){try{const raw=localStorage.getItem(STORAGE_KEY);if(!raw)return emptyData();const parsed=JSON.parse(raw);if(!Array.isArray(parsed.products)||!Array.isArray(parsed.movements))return emptyData();if(!Array.isArray(parsed.customers))parsed.customers=[];return parsed;}catch(e){return emptyData();}}
@@ -11,63 +12,8 @@ function id(){return (crypto&&crypto.randomUUID)?crypto.randomUUID():`${Date.now
 function money(n){return Number(n||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});}
 function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function toast(message,error=false){const el=document.getElementById('toast');el.textContent=message;el.classList.toggle('error',error);el.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove('show'),3200);}
-
-// BACKUP MENSAL AUTOMÁTICO POR E-MAIL (serviço remoto configurado pelo administrador)
-// Cole abaixo a URL pública do Cloudflare Worker depois de publicá-lo.
-const MONTHLY_BACKUP_ENDPOINT = 'COLE_AQUI_A_URL_DO_CLOUDFLARE_WORKER';
-const MONTHLY_BACKUP_STATUS_KEY = 'conceito_backup_mensal_status_v1';
-const MONTHLY_BACKUP_EMAIL = 'infane10@gmail.com';
-function detectarDispositivoBackup(){
-  const ua = navigator.userAgent || '';
-  const mobile = /Android|iPhone|iPad|iPod|Mobile|IEMobile|Opera Mini/i.test(ua) || (navigator.maxTouchPoints > 1 && Math.min(screen.width || 9999, screen.height || 9999) < 800);
-  return mobile ? 'Celular' : 'PC';
-}
-function chaveMesBackup(){
-  const agora = new Date();
-  return `${agora.getFullYear()}-${String(agora.getMonth()+1).padStart(2,'0')}`;
-}
-function bytesParaBase64Utf8(texto){
-  const bytes = new TextEncoder().encode(texto);
-  let binario = '';
-  const bloco = 0x8000;
-  for(let i=0;i<bytes.length;i+=bloco) binario += String.fromCharCode(...bytes.subarray(i,i+bloco));
-  return btoa(binario);
-}
-async function tentarBackupMensalAutomatico(){
-  if(!navigator.onLine) return;
-  if(!MONTHLY_BACKUP_ENDPOINT || MONTHLY_BACKUP_ENDPOINT.startsWith('COLE_AQUI_')) return;
-  const mes = chaveMesBackup();
-  let enviado = {};
-  try { enviado = JSON.parse(localStorage.getItem(MONTHLY_BACKUP_STATUS_KEY) || '{}') || {}; } catch(_) { enviado = {}; }
-  if(enviado[mes] === true) return;
-  const dispositivo = detectarDispositivoBackup();
-  const nomeArquivo = `Conceito_${dispositivo}_${mes}.json`;
-  const conteudo = JSON.stringify({...data, exportedAt:new Date().toISOString(), backupMonth:mes, device:dispositivo}, null, 2);
-  try {
-    const resposta = await fetch(MONTHLY_BACKUP_ENDPOINT, {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({fileName:nomeArquivo, contentBase64:bytesParaBase64Utf8(conteudo), month:mes, device:dispositivo})
-    });
-    let retorno = {};
-    try { retorno = await resposta.json(); } catch(_) {}
-    if(!resposta.ok || retorno.success !== true) throw new Error(retorno.error || `HTTP ${resposta.status}`);
-    enviado[mes] = true;
-    localStorage.setItem(MONTHLY_BACKUP_STATUS_KEY, JSON.stringify(enviado));
-    toast(`Backup mensal enviado para ${MONTHLY_BACKUP_EMAIL} (${dispositivo}).`);
-  } catch(err) {
-    // Não marcar o mês como enviado: haverá nova tentativa na próxima abertura.
-    console.warn('Backup mensal do Conceito não foi enviado; tentará novamente na próxima abertura.', err);
-    toast('Backup mensal não enviado. O sistema tentará novamente na próxima abertura.', true);
-  }
-}
-function agendarBackupMensalAutomatico(){
-  // Espera o login e a renderização inicial; só envia quando o site está aberto e online.
-  setTimeout(()=>{tentarBackupMensalAutomatico();}, 1800);
-  window.addEventListener('online', ()=>{tentarBackupMensalAutomatico();}, {once:true});
-}
-
 function productById(pid){return data.products.find(p=>p.id===pid);}
-function recordMovement(type,p,qty,total,details='',extra={}){data.movements.unshift({id:id(),type,productId:p.id,productName:p.name,quantity:Number(qty),total:Number(total||0),details,...extra,date:new Date().toISOString()});}
+function recordMovement(type,p,qty,total,details='',extra={}){const movement={id:id(),type,productId:p.id,productName:p.name,quantity:Number(qty),total:Number(total||0),details,...extra,date:new Date().toISOString()};data.movements.unshift(movement);return movement;}
 function dateText(d){return new Date(d).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'});}
 function goTo(name){if(name==='backup'&&document.body.dataset.ckrRole!=='admin'){toast('Somente o ADMIN pode acessar Backup e transferência.',true);return;}document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active',p.id===`panel-${name}`));document.querySelectorAll('.nav-link').forEach(b=>b.classList.toggle('active',b.dataset.panel===name));const selected=document.querySelector(`.nav-link[data-panel="${name}"]`);document.getElementById('pageBreadcrumb').textContent=selected?selected.textContent.trim().replace(/\d+$/,'').trim():'Visão geral';document.getElementById('sidebar').classList.remove('open');window.scrollTo({top:0,behavior:'smooth'});}
 document.querySelectorAll('[data-panel]').forEach(b=>b.addEventListener('click',()=>goTo(b.dataset.panel)));
@@ -82,7 +28,7 @@ function renderStats(){
  document.getElementById('menuProdutos').textContent=data.products.length;
   document.getElementById('menuClientes').textContent=(data.customers||[]).length;
  document.getElementById('totalUnidades').textContent=data.products.reduce((s,p)=>s+Number(p.stock||0),0);
- document.getElementById('totalVendas').textContent=data.movements.filter(m=>m.type==='venda').length;
+ document.getElementById('totalVendas').textContent=new Set(data.movements.filter(m=>m.type==='venda').map(m=>m.saleId||m.id)).size;
  document.getElementById('valorEstoque').textContent=money(data.products.reduce((s,p)=>s+Number(p.stock||0)*Number(p.cost||0),0));
  // O lucro só usa vendas que guardam o custo real da época da venda.
  // Vendas antigas sem esse registro não podem ser recalculadas com segurança.
@@ -229,15 +175,38 @@ document.getElementById('listaProdutos').addEventListener('click',e=>{
 });
 document.getElementById('buscaProduto').addEventListener('input',renderProducts);
 document.getElementById('formEntrada').addEventListener('submit',e=>{e.preventDefault();const p=productById(document.getElementById('entradaProduto').value),qty=Number(document.getElementById('entradaQuantidade').value),note=document.getElementById('entradaObs').value.trim();if(!p){toast('Cadastre e selecione um produto primeiro.',true);return;}if(!Number.isInteger(qty)||qty<1){toast('Informe uma quantidade inteira maior que zero.',true);return;}p.stock+=qty;recordMovement('entrada',p,qty,p.cost*qty,note);if(saveData()){e.target.reset();toast('Entrada registrada com sucesso.');}});
+function printSaleReceipt(m){
+ const items=Array.isArray(m.items)&&m.items.length?m.items:[{productName:m.productName||'Produto',quantity:m.quantity||0,unitPrice:m.unitPrice||0,subtotal:m.subtotal||Number(m.unitPrice||0)*Number(m.quantity||0)}];
+ const date=new Date(m.date).toLocaleString('pt-BR'),subtotal=Number(m.subtotal||items.reduce((s,x)=>s+Number(x.subtotal||0),0));
+ const cash=Number(m.discountCash||0),pct=Number(m.discountPercent||0),percentValue=Math.round(Math.max(0,subtotal-cash)*pct)/100,discount=cash+percentValue,total=Number(m.total||0);
+ const popup=window.open('','_blank','width=800,height=900');if(!popup){toast('Permita pop-ups para gerar o recibo e imprimir em PDF.',true);return;}
+ const rows=items.map(x=>`<tr><td>${esc(x.productName)}</td><td>${Number(x.quantity||0)}</td><td>${money(x.unitPrice||0)}</td><td>${money(x.subtotal||Number(x.unitPrice||0)*Number(x.quantity||0))}</td></tr>`).join('');
+ popup.document.write(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Recibo de venda CKR</title><style>body{font:14px Arial,sans-serif;color:#111;max-width:760px;margin:25px auto;padding:24px}h1{text-align:center;font-size:22px;margin:0 0 4px}.sub{text-align:center;color:#555;margin-bottom:24px}.line{display:flex;justify-content:space-between;gap:18px;margin:9px 0}table{width:100%;border-collapse:collapse;margin:20px 0}th,td{border-bottom:1px solid #ddd;padding:10px 6px;text-align:left}th:last-child,td:last-child{text-align:right}.total{font-size:18px;font-weight:bold;border-top:2px solid #222;padding-top:12px}.obs{margin-top:18px;white-space:pre-wrap}.warranty{text-align:center;border:1px solid #bbb;padding:12px;margin-top:25px;font-weight:bold}.actions{text-align:center;margin:0 0 20px}.actions button{padding:10px 18px;cursor:pointer}@media print{.actions{display:none}body{margin:0;padding:10mm}}</style></head><body><div class="actions"><button onclick="window.print()">Imprimir / Salvar em PDF</button></div><h1>CKR COLCHÕES</h1><div class="sub">RECIBO DE VENDA</div><div class="line"><span><b>Cliente:</b> ${esc(m.client||'Não informado')}</span><span><b>Data:</b> ${esc(date)}</span></div><div class="line"><span><b>Recibo:</b> ${esc(String(m.saleId||m.id||'').slice(0,12))}</span></div><table><thead><tr><th>Produto</th><th>Quantidade</th><th>Valor unitário</th><th>Subtotal</th></tr></thead><tbody>${rows}</tbody></table><div class="line"><span>Subtotal dos produtos</span><b>${money(subtotal)}</b></div><div class="line"><span>Desconto em reais</span><span>${money(cash)}</span></div><div class="line"><span>Desconto percentual (${pct.toLocaleString('pt-BR')}%)</span><span>${money(percentValue)}</span></div><div class="line"><span>Desconto total</span><span>${money(discount)}</span></div><div class="line total"><span>TOTAL DA VENDA</span><span>${money(total)}</span></div>${m.paymentDetails?`<p><b>Pagamento:</b> ${esc(m.paymentDetails)}</p>`:''}<div class="obs"><b>Observações:</b> ${esc(m.note||'—')}</div><div class="warranty">Garantia: 3 meses (90 dias).</div><p style="text-align:center;margin-top:30px;color:#555">Obrigado pela preferência!</p><script>setTimeout(()=>window.print(),350)<\/script></body></html>`);popup.document.close();
+}
+function cartSubtotal(){return Math.round(saleCart.reduce((s,x)=>s+x.quantity*x.unitPrice,0)*100)/100;}
 function saleTotals(){
- const qty=Number(document.getElementById('vendaQuantidade').value||0),price=Number(document.getElementById('vendaPreco').value||0);
- const subtotal=Math.round(qty*price*100)/100;
+ const subtotal=saleCart.length?cartSubtotal():0;
  const discountCash=Math.min(subtotal,Math.max(0,Number(document.getElementById('vendaDescontoReais').value||0)));
- const afterCash=Math.max(0,subtotal-discountCash);
- const discountPercent=Math.min(100,Math.max(0,Number(document.getElementById('vendaDescontoPercentual').value||0)));
+ const afterCash=Math.max(0,subtotal-discountCash),discountPercent=Math.min(100,Math.max(0,Number(document.getElementById('vendaDescontoPercentual').value||0)));
  const total=Math.round(afterCash*(1-discountPercent/100)*100)/100;
  return {subtotal,discountCash,discountPercent,total};
 }
+function renderCart(){
+ const body=document.getElementById('carrinhoLinhas');
+ if(!saleCart.length)body.innerHTML='<tr><td colspan="5">Carrinho vazio. Adicione um produto acima.</td></tr>';
+ else body.innerHTML=saleCart.map((x,i)=>`<tr><td>${esc(x.productName)}</td><td>${x.quantity}</td><td>${money(x.unitPrice)}</td><td>${money(x.quantity*x.unitPrice)}</td><td><button type="button" class="row-action delete" data-cart-remove="${i}" aria-label="Remover ${esc(x.productName)}">Remover</button></td></tr>`).join('');
+ document.getElementById('carrinhoQuantidadeItens').textContent=`${saleCart.length} ${saleCart.length===1?'produto':'produtos'}`;
+ document.getElementById('subtotalCarrinho').textContent=money(cartSubtotal());
+}
+document.getElementById('carrinhoLinhas').addEventListener('click',e=>{const b=e.target.closest('[data-cart-remove]');if(!b)return;saleCart.splice(Number(b.dataset.cartRemove),1);renderCart();updateSalePreview();});
+document.getElementById('adicionarAoCarrinho').addEventListener('click',()=>{
+ const p=productById(document.getElementById('vendaProduto').value),qty=Number(document.getElementById('vendaQuantidade').value),price=Number(document.getElementById('vendaPreco').value);
+ if(!p){toast('Selecione um produto.',true);return;}if(!Number.isInteger(qty)||qty<1){toast('Informe uma quantidade inteira maior que zero.',true);return;}if(!Number.isFinite(price)||price<0){toast('Informe um preço válido.',true);return;}
+ const existing=saleCart.find(x=>x.productId===p.id);const totalQty=qty+(existing?existing.quantity:0);
+ if(totalQty>Number(p.stock)){toast(`Estoque insuficiente para ${p.name}. Disponível: ${p.stock}.`,true);return;}
+ if(existing){existing.quantity+=qty;existing.unitPrice=price;}else saleCart.push({productId:p.id,productName:p.name,quantity:qty,unitPrice:price,unitCost:Number(p.cost||0)});
+ renderCart();updateSalePreview();toast(`${p.name} adicionado ao carrinho.`);
+});
 function updatePaymentRow(row){
  const isCard=row.querySelector('.pagamentoMetodo').value==='Cartão de crédito';
  row.querySelector('.payment-card-options').hidden=!isCard;
@@ -260,24 +229,27 @@ function updatePaymentSummary(){
 }
 function updateSalePreview(){
  const p=productById(document.getElementById('vendaProduto').value);if(p&&document.activeElement!==document.getElementById('vendaPreco'))document.getElementById('vendaPreco').value=Number(p.price).toFixed(2);
- const t=saleTotals();document.getElementById('subtotalVendaPreview').textContent=money(t.subtotal);document.getElementById('totalVendaPreview').textContent=money(t.total);updatePaymentSummary();
+ const t=saleTotals();document.getElementById('subtotalVendaPreview').textContent=money(t.subtotal);document.getElementById('descontoCarrinhoPreview').textContent=money(t.discountCash+Math.round(Math.max(0,t.subtotal-t.discountCash)*t.discountPercent)/100);document.getElementById('totalVendaPreview').textContent=money(t.total);updatePaymentSummary();
 }
-['vendaProduto','vendaQuantidade','vendaPreco','vendaDescontoReais','vendaDescontoPercentual'].forEach(key=>document.getElementById(key).addEventListener(key==='vendaProduto'?'change':'input',updateSalePreview));
+['vendaProduto','vendaQuantidade','vendaPreco'].forEach(key=>document.getElementById(key).addEventListener(key==='vendaProduto'?'change':'input',()=>{if(key==='vendaProduto'){const p=productById(document.getElementById(key).value);if(p)document.getElementById('vendaPreco').value=Number(p.price).toFixed(2);} }));
+['vendaDescontoReais','vendaDescontoPercentual'].forEach(key=>document.getElementById(key).addEventListener('input',updateSalePreview));
 document.getElementById('adicionarPagamento').addEventListener('click',addPaymentRow);
 document.getElementById('formVenda').addEventListener('submit',e=>{
- e.preventDefault();const p=productById(document.getElementById('vendaProduto').value),qty=Number(document.getElementById('vendaQuantidade').value),price=Number(document.getElementById('vendaPreco').value),client=document.getElementById('vendaCliente').value.trim(),note=document.getElementById('vendaObs').value.trim(),totals=saleTotals(),payments=readPayments(),received=Math.round(payments.reduce((s,x)=>s+x.amount,0)*100)/100;
- if(!p){toast('Cadastre e selecione um produto primeiro.',true);return;}if(!Number.isInteger(qty)||qty<1){toast('Informe uma quantidade inteira maior que zero.',true);return;}if(qty>p.stock){toast(`Estoque insuficiente. Disponível: ${p.stock}.`,true);return;}if(!Number.isFinite(price)||price<0){toast('Informe um preço válido.',true);return;}
+ e.preventDefault();if(!saleCart.length){toast('Adicione pelo menos um produto ao carrinho.',true);return;}
+ const client=document.getElementById('vendaCliente').value.trim(),note=document.getElementById('vendaObs').value.trim(),totals=saleTotals(),payments=readPayments(),received=Math.round(payments.reduce((s,x)=>s+x.amount,0)*100)/100;
+ for(const item of saleCart){const p=productById(item.productId);if(!p||item.quantity<1||item.quantity>p.stock){toast(`Estoque insuficiente ou produto indisponível: ${item.productName}.`,true);return;}}
  if(totals.discountCash<0||totals.discountPercent<0||totals.discountPercent>100){toast('Confira os descontos informados.',true);return;}
  if(!payments.length||payments.some(x=>!x.method||x.amount<=0)){toast('Informe a forma e o valor de cada pagamento.',true);return;}
  if(payments.some(x=>x.method==='Cartão de crédito'&&(!Number.isInteger(x.installments)||x.installments<1))){toast('Informe um número válido de parcelas para cada cartão.',true);return;}
  if(Math.abs(received-totals.total)>0.009){toast(`Os pagamentos devem somar exatamente ${money(totals.total)}. Saldo: ${money(totals.total-received)}.`,true);return;}
  const paymentDetails=payments.map(x=>x.method==='Cartão de crédito'?`${x.method}: ${money(x.amount)} em ${x.installments}x (${x.responsible==='fabrica'?'fábrica':'loja'})`:`${x.method}: ${money(x.amount)}`).join(' | ');
- const details=[client?`Cliente: ${client}`:'',`Subtotal: ${money(totals.subtotal)}`,totals.discountCash?`Desconto: ${money(totals.discountCash)} + ${totals.discountPercent}%`:'',`Pagamentos: ${paymentDetails}`,note].filter(Boolean).join(' · ');
- const custoUnitarioVenda=Math.round(Number(p.cost||0)*100)/100;
- const custoTotalVenda=Math.round(custoUnitarioVenda*qty*100)/100;
- const lucroVenda=Math.round((Number(totals.total||0)-custoTotalVenda)*100)/100;
- p.stock-=qty;recordMovement('venda',p,qty,totals.total,details,{client,payments,subtotal:totals.subtotal,discountCash:totals.discountCash,discountPercent:totals.discountPercent,unitPrice:price,unitCost:custoUnitarioVenda,costTotal:custoTotalVenda,profit:lucroVenda});
- if(saveData()){e.target.reset();document.getElementById('linhasPagamento').innerHTML='';addPaymentRow();updateSalePreview();toast('Venda registrada e estoque atualizado.');}
+ const saleId=id(),percentDiscount=Math.round(Math.max(0,totals.subtotal-totals.discountCash)*totals.discountPercent)/100,discountTotal=totals.discountCash+percentDiscount;
+ let remainingDiscount=discountTotal,remainingNet=totals.total;
+ const items=saleCart.map((item,index)=>{const p=productById(item.productId),lineSubtotal=Math.round(item.quantity*item.unitPrice*100)/100;let lineDiscount=index===saleCart.length-1?remainingDiscount:Math.round(discountTotal*(lineSubtotal/(totals.subtotal||1))*100)/100;lineDiscount=Math.max(0,Math.min(lineSubtotal,lineDiscount));remainingDiscount=Math.round((remainingDiscount-lineDiscount)*100)/100;let lineTotal=index===saleCart.length-1?remainingNet:Math.round((lineSubtotal-lineDiscount)*100)/100;remainingNet=Math.round((remainingNet-lineTotal)*100)/100;return {...item,subtotal:lineSubtotal,discount:lineDiscount,total:lineTotal,unitCost:Number(p.cost||0),costTotal:Math.round(Number(p.cost||0)*item.quantity*100)/100};});
+ const details=[client?`Cliente: ${client}`:'',`Subtotal: ${money(totals.subtotal)}`,discountTotal?`Desconto total: ${money(discountTotal)}`:'',`Pagamentos: ${paymentDetails}`,note].filter(Boolean).join(' · '),date=new Date().toISOString();
+ items.forEach(item=>{const p=productById(item.productId);p.stock-=item.quantity;recordMovement('venda',p,item.quantity,item.total,details,{saleId,client,payments,subtotal:item.subtotal,discountCash:0,discountPercent:0,unitPrice:item.unitPrice,unitCost:item.unitCost,costTotal:item.costTotal,profit:Math.round((item.total-item.costTotal)*100)/100,productDiscount:item.discount,note,paymentDetails,date});});
+ const receipt={id:saleId,saleId,date,client,note,items,subtotal:totals.subtotal,discountCash:totals.discountCash,discountPercent:totals.discountPercent,total:totals.total,paymentDetails,details};
+ if(saveData()){e.target.reset();saleCart=[];renderCart();document.getElementById('linhasPagamento').innerHTML='';addPaymentRow();updateSalePreview();toast('Venda registrada. Abrindo recibo para imprimir ou salvar em PDF.');printSaleReceipt(receipt);}
 });
 document.getElementById('filtroTipo').addEventListener('change',renderHistory);
 document.getElementById('limparHistorico').addEventListener('click',()=>{if(!confirm('Apagar o histórico? Os produtos e quantidades em estoque serão mantidos.'))return;data.movements=[];if(saveData())toast('Histórico apagado.');});
@@ -291,6 +263,7 @@ document.getElementById('imprimirRelatorio').addEventListener('click',()=>{rende
 // Período padrão: mês atual
 const reportToday=new Date();document.getElementById('relatorioDataInicio').value=`${reportToday.getFullYear()}-${String(reportToday.getMonth()+1).padStart(2,'0')}-01`;document.getElementById('relatorioDataFim').value=localDateKey(reportToday);
 renderAll();
+renderCart();
 addPaymentRow();
 
 
@@ -306,12 +279,18 @@ addPaymentRow();
  try{admin=JSON.parse(localStorage.getItem(AUTH_KEY)||'null');}catch(e){admin=null;}
  try{users=JSON.parse(localStorage.getItem(USERS_KEY)||'[]');if(!Array.isArray(users))users=[];}catch(e){users=[];}
  const saveUsers=()=>localStorage.setItem(USERS_KEY,JSON.stringify(users));
+ // Credenciais iniciais: admin permanente e user com prazo de 182,5 dias.
+ if(!admin||!admin.username||!admin.password){admin={username:'admin',password:'contador123'};localStorage.setItem(AUTH_KEY,JSON.stringify(admin));}
+ if(!users.some(u=>String(u.username||'').toLowerCase()==='user')){
+   users.push({username:'user',password:'user123',createdAt:new Date().toISOString(),expiresAt:new Date(Date.now()+182.5*24*60*60*1000).toISOString()});
+   saveUsers();
+ }
  const normalized=s=>String(s||'').trim().toLowerCase();
  function showLogin(){gate.hidden=false;shell.hidden=true;loginForm.hidden=false;setupForm.hidden=true;showSetupButton.hidden=!!(admin&&admin.username&&admin.password);desc.textContent='Informe seu usuário e senha para continuar.';error.textContent='';userInput.focus();}
  function showSetup(){gate.hidden=false;shell.hidden=true;loginForm.hidden=true;setupForm.hidden=false;showSetupButton.hidden=true;desc.textContent='Crie o usuário ADMIN e uma senha para este navegador.';setupError.textContent='';document.getElementById('ckrSetupUser').focus();}
  showSetupButton.addEventListener('click',()=>{showSetup();});
  function updateExpiryStatus(){const el=document.getElementById('ckrExpiryStatus');if(!el)return;if(!currentUser||currentUser.role==='admin'){el.hidden=true;el.textContent='';return;}const found=users.find(u=>normalized(u.username)===normalized(currentUser.username));if(!found||!found.expiresAt){el.hidden=true;el.textContent='';return;}const remaining=new Date(found.expiresAt).getTime()-Date.now();if(remaining<=0){el.textContent='◷ Acesso expirado';el.hidden=false;el.classList.add('expired');return;}const days=Math.ceil(remaining/(24*60*60*1000));el.textContent='◷ '+days+' '+(days===1?'dia':'dias');el.hidden=false;el.classList.remove('expired');}
- function enter(user){currentUser=user;document.body.dataset.ckrRole=user.role;sessionStorage.setItem(SESSION_KEY,JSON.stringify({username:user.username,role:user.role}));gate.hidden=true;shell.hidden=false;document.getElementById('ckrUserAvatar').textContent=(user.username||'AD').trim().slice(0,2).toUpperCase();manageButton.hidden=user.role!=='admin';if(manageSidebar)manageSidebar.hidden=user.role!=='admin';document.querySelectorAll('[data-panel="backup"],[data-go="backup"]').forEach(el=>{el.hidden=user.role!=='admin';});updateExpiryStatus();const backupPanel=document.getElementById('panel-backup');if(backupPanel&&user.role!=='admin'&&backupPanel.classList.contains('active'))goTo('dashboard');agendarBackupMensalAutomatico();}
+ function enter(user){currentUser=user;document.body.dataset.ckrRole=user.role;sessionStorage.setItem(SESSION_KEY,JSON.stringify({username:user.username,role:user.role}));gate.hidden=true;shell.hidden=false;document.getElementById('ckrUserAvatar').textContent=(user.username||'AD').trim().slice(0,2).toUpperCase();manageButton.hidden=user.role!=='admin';if(manageSidebar)manageSidebar.hidden=user.role!=='admin';document.querySelectorAll('[data-panel="backup"],[data-go="backup"]').forEach(el=>{el.hidden=user.role!=='admin';});updateExpiryStatus();const backupPanel=document.getElementById('panel-backup');if(backupPanel&&user.role!=='admin'&&backupPanel.classList.contains('active'))goTo('dashboard');}
  function getValidUser(username,password){
    if(admin&&normalized(username)===normalized(admin.username)&&password===admin.password)return {username:admin.username,role:'admin'};
    const found=users.find(u=>normalized(u.username)===normalized(username));
@@ -340,6 +319,25 @@ addPaymentRow();
    changePasswordForm.style.display='grid';
    document.getElementById('ckrAdminNewPassword').focus();
  }
+ function renameUsername(oldName){
+   if(!currentUser||currentUser.role!=='admin')return;
+   const next=prompt('Novo nome de usuário:',oldName);
+   if(next===null)return;
+   const username=next.trim();
+   if(username.length<3){toast('O usuário precisa ter pelo menos 3 caracteres.',true);return;}
+   if(users.some(u=>normalized(u.username)===normalized(username)&&normalized(u.username)!==normalized(oldName))||
+      (admin&&normalized(admin.username)===normalized(username)&&normalized(admin.username)!==normalized(oldName))){
+     toast('Esse nome de usuário já está cadastrado.',true);return;
+   }
+   if(admin&&normalized(oldName)===normalized(admin.username)){
+     admin={...admin,username};localStorage.setItem(AUTH_KEY,JSON.stringify(admin));
+     if(currentUser)currentUser.username=username;
+   }else{
+     const u=users.find(x=>normalized(x.username)===normalized(oldName));if(!u)return;
+     u.username=username;saveUsers();
+   }
+   renderUsers();toast('Nome de usuário atualizado.');
+ }
  function renderUsers(){
    const list=document.getElementById('ckrUsersList');
    list.innerHTML='';
@@ -354,6 +352,7 @@ addPaymentRow();
      const meta=document.createElement('small');
      meta.textContent='Administrador • acesso permanente';
      info.append(name,meta);
+     const rename=document.createElement('button');rename.type='button';rename.className='button';rename.textContent='Editar usuário';rename.addEventListener('click',()=>renameUsername(admin.username));row.append(rename);
      const change=document.createElement('button');
      change.type='button';
      change.className='button';
@@ -379,6 +378,7 @@ addPaymentRow();
      info.append(name,meta);
 
      const actions=document.createElement('div');
+     const rename=document.createElement('button');rename.type='button';rename.className='button';rename.textContent='Editar usuário';rename.addEventListener('click',()=>renameUsername(u.username));
      const change=document.createElement('button');
      change.type='button';
      change.className='button';
@@ -397,7 +397,7 @@ addPaymentRow();
        renderUsers();
        toast('Usuário excluído.');
      });
-     actions.append(change,del);
+     actions.append(rename,change,del);
      row.append(info,actions);
      list.append(row);
    });
@@ -457,8 +457,7 @@ addPaymentRow();
    const created=Date.now(), expiry=new Date(created+182.5*24*60*60*1000).toISOString();users.push({username,password,createdAt:new Date(created).toISOString(),expiresAt:expiry});
    try{saveUsers();renderUsers();e.target.reset();toast('Usuário criado. O acesso expira em 182,5 dias.');}catch(ex){users.pop();err.textContent='Não foi possível salvar o usuário neste navegador.';}
  });
- if(!admin||!admin.username||!admin.password){showSetup();}
- else if(sessionStorage.getItem(SESSION_KEY)){try{const sess=JSON.parse(sessionStorage.getItem(SESSION_KEY));const u=getValidUser(sess.username, sess.role==='admin'?admin.password:(users.find(x=>normalized(x.username)===normalized(sess.username))||{}).password);if(u&&!u.expired)enter(u);else{sessionStorage.removeItem(SESSION_KEY);showLogin();}}catch(e){showLogin();}}
+ if(sessionStorage.getItem(SESSION_KEY)){try{const sess=JSON.parse(sessionStorage.getItem(SESSION_KEY));const u=getValidUser(sess.username, sess.role==='admin'?admin.password:(users.find(x=>normalized(x.username)===normalized(sess.username))||{}).password);if(u&&!u.expired)enter(u);else{sessionStorage.removeItem(SESSION_KEY);showLogin();}}catch(e){showLogin();}}
  else{showLogin();}
  setupForm.addEventListener('submit',e=>{e.preventDefault();setupError.textContent='';const username=document.getElementById('ckrSetupUser').value.trim(),password=document.getElementById('ckrSetupPassword').value,confirmPassword=document.getElementById('ckrSetupConfirm').value;if(username.length<3){setupError.textContent='O usuário deve ter pelo menos 3 caracteres.';return;}if(password.length<6){setupError.textContent='A senha precisa ter pelo menos 6 caracteres.';return;}if(password!==confirmPassword){setupError.textContent='As senhas não são iguais.';return;}try{localStorage.setItem(AUTH_KEY,JSON.stringify({username,password}));admin={username,password};enter({username,role:'admin'});toast('Administrador criado neste navegador.');}catch(err){setupError.textContent='Não foi possível salvar as credenciais neste navegador.';}});
  loginForm.addEventListener('submit',e=>{e.preventDefault();error.textContent='';const username=userInput.value.trim(),password=passInput.value,u=getValidUser(username,password);if(u&&u.expired){error.textContent='O prazo de uso deste usuário terminou. Solicite ao ADMIN um novo acesso.';passInput.value='';return;}if(u){passInput.value='';enter(u);}else{error.textContent='Usuário ou senha incorretos.';passInput.value='';passInput.focus();}});
