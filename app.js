@@ -64,7 +64,21 @@ function bindMoneyMask(input, {percent=false}={}){
   setTimeout(toEnd,0);
  });
  // Sempre usa só os dígitos digitados: cada número novo entra pela direita (centavos).
- input.addEventListener('input',()=>apply(input.value));
+ // Guarda o valor ANTES da digitação e soma o dígito novo pela direita,
+ // mesmo que o teclado do celular altere o texto ou o cursor fique no meio.
+ const snap=()=>{input._prev=input.value;input._sel=input.selectionStart!==input.selectionEnd;};
+ input.addEventListener('beforeinput',snap);
+ input.addEventListener('keydown',snap);
+ input.addEventListener('input',e=>{
+  const prev=String(input._prev??'').replace(/\D/g,'');
+  const type=e&&e.inputType||'';
+  const ch=e&&typeof e.data==='string'?e.data.replace(/\D/g,''):'';
+  const hadSel=input._sel;input._prev=undefined;input._sel=false;
+  if(hadSel||!input.value){apply(input.value);return;}
+  if(type==='insertText'&&ch.length===1){apply(prev+ch);return;}
+  if(type==='deleteContentBackward'||type==='deleteContentForward'){apply(prev.slice(0,-1));return;}
+  apply(input.value);
+ });
  // Colar "10,50" ou "R$ 1.234,56" mantém o valor correto.
  input.addEventListener('paste',e=>{
   const txt=(e.clipboardData||window.clipboardData).getData('text');
