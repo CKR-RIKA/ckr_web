@@ -200,6 +200,11 @@
             <form id="formVenda" class="form-stack">
               <label class="field">Produto<select id="vendaProduto" required></select></label>
               <div class="form-two"><label class="field">Quantidade vendida<input id="vendaQuantidade" type="number" min="1" step="1" required placeholder="Ex.: 1"></label><label class="field">Valor unitário (R$)<input id="vendaPreco" type="number" min="0" step="0.01" required></label></div>
+              <button class="button button-light full-button" id="adicionarAoCarrinho" type="button">＋ Adicionar produto ao carrinho</button>
+              <section class="cart-box" aria-labelledby="carrinhoTitulo">
+                <div class="payment-heading"><div><h3 id="carrinhoTitulo">Carrinho da venda</h3><p>Adicione vários produtos antes de confirmar.</p></div><span id="carrinhoQuantidade" class="cart-count">0 itens</span></div>
+                <div class="table-wrap"><table class="cart-table"><thead><tr><th>PRODUTO</th><th>QTD.</th><th>UNITÁRIO</th><th>TOTAL</th><th></th></tr></thead><tbody id="carrinhoLinhas"><tr><td colspan="5" class="cart-empty">O carrinho está vazio.</td></tr></tbody></table></div>
+              </section>
               <label class="field">Cliente (opcional)<input id="vendaCliente" maxlength="150" list="clientesSugestoes" placeholder="Digite as primeiras letras e selecione"><datalist id="clientesSugestoes"></datalist></label>
               <div class="sale-discounts">
                 <label class="field">Desconto em reais (R$)<input id="vendaDescontoReais" type="number" min="0" step="0.01" value="0"></label>
@@ -214,7 +219,13 @@
                 <p id="avisoPagamento" class="payment-notice">Informe as formas de pagamento até completar o total da venda.</p>
               </section>
               <label class="field">Observação (opcional)<input id="vendaObs" maxlength="180" placeholder="Observação da venda"></label>
-              <button class="button button-primary full-button" type="submit">Confirmar venda <span>→</span></button>
+              <button class="button button-primary full-button" type="submit">Confirmar venda e baixar estoque <span>→</span></button>
+              <div id="reciboAcoes" class="receipt-actions" hidden>
+                <p id="reciboStatus">Venda registrada. Gere o recibo em PDF e envie ao cliente.</p>
+                <button class="button button-light full-button" id="baixarReciboPdf" type="button">⬇ Baixar recibo em PDF</button>
+                <button class="button button-success full-button" id="enviarReciboWhatsapp" type="button">Enviar mensagem pelo WhatsApp</button>
+                <small>O PDF é baixado no aparelho. Para enviá-lo no WhatsApp, anexe o arquivo baixado na conversa com o cliente.</small>
+              </div>
             </form>
           </section>
         </section>
@@ -265,6 +276,7 @@
     </main>
   </div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" referrerpolicy="no-referrer"></script>
   <script src="app.js"></script>
 </body>
 </html>
