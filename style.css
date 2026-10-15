@@ -166,3 +166,7 @@
 .profit-margin b{font-size:13px;color:#159568}
 .profit-note{font-size:9px;line-height:1.45;color:#9aa4b2}
 @media(min-width:1500px){.profit-note{font-size:10px}}
+
+
+/* Carrinho de venda e ações do recibo */
+.cart-box{border:1px solid #e7ebf3;border-radius:12px;padding:14px;background:#fbfcff;margin:2px 0 16px;min-width:0}.cart-count{font-size:10px;font-weight:800;color:#345ee8;background:#eaf0ff;padding:6px 9px;border-radius:20px;white-space:nowrap}.cart-table{min-width:520px}.cart-table th,.cart-table td{padding:9px 8px}.cart-empty{text-align:center!important;color:#9aa4b2!important;padding:18px!important}.cart-remove{border:0;border-radius:7px;width:27px;height:27px;background:#fff0f0;color:#ce5158;font-size:19px;cursor:pointer}.receipt-actions{border:1px solid #cfe9dc;background:#f4fbf7;border-radius:12px;padding:15px;margin-top:14px;display:grid;gap:9px}.receipt-actions[hidden]{display:none}.receipt-actions p{margin:0;color:#245c42;font-weight:700;font-size:12px}.receipt-actions small{font-size:10px;line-height:1.5;color:#65738a}.cart-box .payment-heading{margin-bottom:12px}
