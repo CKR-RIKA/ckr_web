@@ -46,28 +46,35 @@ function formatMoneyDigits(value){
  return (cents/100).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
 }
 function bindMoneyMask(input, {percent=false}={}){
- if(!input)return;
- input.addEventListener('focus',()=>{
-  if(input.value==='0'||input.value==='0,00'||input.value==='0.00')input.value='';
-  input.select();
- });
- input.addEventListener('input',()=>{
-  const before=input.value;
-  if(/[.,]/.test(before)){
-   const normalized=before.replace(/\./g,'').replace(',','.');
-   const n=Number(normalized);
-   if(Number.isFinite(n)){
-    input.value=n.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
-   }
-  }else{
-   input.value=formatMoneyDigits(before);
-  }
-  if(percent){
-   const n=parseMoneyInput(input.value);
-   if(n>100)input.value='100,00';
-  }
+ if(!input||input.dataset.moneyMask==='1')return;
+ input.dataset.moneyMask='1';
+ input.setAttribute('inputmode','numeric');
+ input.setAttribute('autocomplete','off');
+ const toEnd=()=>{try{const l=input.value.length;input.setSelectionRange(l,l);}catch(e){}};
+ const apply=(digits)=>{
+  digits=String(digits||'').replace(/\D/g,'').replace(/^0+(?=\d)/,'').slice(0,12);
+  let out=digits?formatMoneyDigits(digits):'';
+  if(percent&&out&&parseMoneyInput(out)>100)out='100,00';
+  input.value=out;
+  toEnd();
   input.dispatchEvent(new Event('money-mask-updated',{bubbles:false}));
+ };
+ input.addEventListener('focus',()=>{
+  if(['0','0,00','0.00'].includes(input.value))input.value='';
+  setTimeout(toEnd,0);
  });
+ // Sempre usa só os dígitos digitados: cada número novo entra pela direita (centavos).
+ input.addEventListener('input',()=>apply(input.value));
+ // Colar "10,50" ou "R$ 1.234,56" mantém o valor correto.
+ input.addEventListener('paste',e=>{
+  const txt=(e.clipboardData||window.clipboardData).getData('text');
+  if(!txt)return;
+  e.preventDefault();
+  const n=parseMoneyInput(txt);
+  apply(String(Math.round(n*100)));
+ });
+ // Mantém o cursor sempre no fim (evita bagunça ao tocar no campo no celular).
+ ['click','touchend','keyup'].forEach(ev=>input.addEventListener(ev,()=>setTimeout(toEnd,0)));
  input.addEventListener('blur',()=>{
   if(!input.value.trim())return;
   const n=parseMoneyInput(input.value);
@@ -222,9 +229,10 @@ document.getElementById('listaClientes').addEventListener('click',e=>{
  if(edit){const c=customerById(edit);if(c){editingCustomerId=c.id;fillCustomerForm(c);}}
  if(del){const c=customerById(del);if(!c)return;if(!confirm(`Excluir o cadastro de "${c.name}"? O histórico de vendas será mantido.`))return;data.customers=data.customers.filter(x=>x.id!==del);if(editingCustomerId===del)resetCustomerForm();if(saveData())toast('Cliente excluído.');}
 });
-function resetProductForm(){editingId=null;document.getElementById('formProduto').reset();document.getElementById('produtoEstoque').disabled=false;document.getElementById('produtoEstoque').title='';document.getElementById('produtoCusto').value='0';document.getElementById('produtoPreco').value='0';document.getElementById('produtoEstoque').value='0';document.getElementById('formProdutoTitulo').textContent='Adicionar produto';document.getElementById('salvarProdutoBtn').textContent='Salvar produto';document.getElementById('cancelarEdicao').hidden=true;}
+['produtoCusto','produtoPreco'].forEach(k=>bindMoneyMask(document.getElementById(k)));
+function resetProductForm(){editingId=null;document.getElementById('formProduto').reset();document.getElementById('produtoEstoque').disabled=false;document.getElementById('produtoEstoque').title='';document.getElementById('produtoCusto').value='0,00';document.getElementById('produtoPreco').value='0,00';document.getElementById('produtoEstoque').value='0';document.getElementById('formProdutoTitulo').textContent='Adicionar produto';document.getElementById('salvarProdutoBtn').textContent='Salvar produto';document.getElementById('cancelarEdicao').hidden=true;}
 document.getElementById('formProduto').addEventListener('submit',e=>{
- e.preventDefault();const name=document.getElementById('produtoNome').value.trim(),code=document.getElementById('produtoCodigo').value.trim(),cost=Number(document.getElementById('produtoCusto').value),price=Number(document.getElementById('produtoPreco').value),stock=Number(document.getElementById('produtoEstoque').value);
+ e.preventDefault();const name=document.getElementById('produtoNome').value.trim(),code=document.getElementById('produtoCodigo').value.trim(),cost=parseMoneyInput(document.getElementById('produtoCusto').value),price=parseMoneyInput(document.getElementById('produtoPreco').value),stock=Number(document.getElementById('produtoEstoque').value);
  if(!name||!Number.isFinite(cost)||!Number.isFinite(price)||cost<0||price<0||!Number.isInteger(stock)||stock<0){toast('Confira os dados informados.',true);return;}
  if(code&&data.products.some(p=>p.id!==editingId&&p.code.toLowerCase()===code.toLowerCase())){toast('Já existe um produto com esse código.',true);return;}
  if(editingId){const p=productById(editingId);if(!p)return;p.name=name;p.code=code;p.cost=cost;p.price=price;toast('Produto atualizado. O estoque foi mantido.');}
@@ -234,7 +242,7 @@ document.getElementById('formProduto').addEventListener('submit',e=>{
 document.getElementById('cancelarEdicao').addEventListener('click',resetProductForm);
 document.getElementById('listaProdutos').addEventListener('click',e=>{
  const edit=e.target.dataset.edit,del=e.target.dataset.delete;
- if(edit){const p=productById(edit);if(!p)return;editingId=p.id;document.getElementById('produtoNome').value=p.name;document.getElementById('produtoCodigo').value=p.code||'';document.getElementById('produtoCusto').value=p.cost;document.getElementById('produtoPreco').value=p.price;document.getElementById('produtoEstoque').value=p.stock;document.getElementById('produtoEstoque').disabled=true;document.getElementById('formProdutoTitulo').textContent='Editar produto';document.getElementById('salvarProdutoBtn').textContent='Salvar alterações';document.getElementById('cancelarEdicao').hidden=false;document.getElementById('produtoEstoque').title='Para alterar estoque, use Entrada ou Venda.';document.getElementById('formProduto').scrollIntoView({behavior:'smooth',block:'start'});}
+ if(edit){const p=productById(edit);if(!p)return;editingId=p.id;document.getElementById('produtoNome').value=p.name;document.getElementById('produtoCodigo').value=p.code||'';document.getElementById('produtoCusto').value=Number(p.cost||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});document.getElementById('produtoPreco').value=Number(p.price||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});document.getElementById('produtoEstoque').value=p.stock;document.getElementById('produtoEstoque').disabled=true;document.getElementById('formProdutoTitulo').textContent='Editar produto';document.getElementById('salvarProdutoBtn').textContent='Salvar alterações';document.getElementById('cancelarEdicao').hidden=false;document.getElementById('produtoEstoque').title='Para alterar estoque, use Entrada ou Venda.';document.getElementById('formProduto').scrollIntoView({behavior:'smooth',block:'start'});}
  if(del){const p=productById(del);if(!p)return;if(!confirm(`Excluir "${p.name}" do catálogo? O histórico será mantido.`))return;data.products=data.products.filter(x=>x.id!==del);if(editingId===del)resetProductForm();if(saveData())toast('Produto excluído.');}
 });
 document.getElementById('buscaProduto').addEventListener('input',renderProducts);
