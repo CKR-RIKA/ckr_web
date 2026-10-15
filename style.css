@@ -233,3 +233,42 @@ tr.row-canceled td:not(.sale-status){opacity:.6}
 @media(max-width:1050px){.sales-search-filters{grid-template-columns:repeat(2,minmax(0,1fr))}.sales-search-filters .button{width:100%}}
 @media(max-width:600px){.sales-search-filters{grid-template-columns:1fr}.sale-edit-banner{flex-direction:column;align-items:stretch}}
 @media print{#panel-historico{display:none!important}}
+
+
+/* ===== Login responsivo definitivo =====
+   Corrige o formulário esmagado em telas grandes: o recuo em % do cartão era calculado sobre a
+   largura da TELA (não do cartão). Agora o cartão é uma grade de colunas e a % vale para o próprio cartão. */
+.auth-gate{align-items:flex-start;justify-content:flex-start;overflow:auto}
+.auth-card{margin:auto;flex:0 1 auto}
+@media (min-width:761px){
+ .auth-card{
+  --auth-pad-l:clamp(24px,4.5vw,54px);--auth-pad-r:clamp(24px,5vw,60px);
+  display:grid;grid-template-columns:46.5% var(--auth-pad-l) minmax(0,1fr) var(--auth-pad-r);
+  align-content:center;
+  width:min(100%,1120px);max-width:1120px;
+  min-height:clamp(560px,76vh,700px);
+  padding:clamp(28px,4.5vw,52px) 0 clamp(26px,4vw,42px);
+ }
+ .auth-card>*{grid-column:3;min-width:0}
+ .auth-card form,.auth-card #ckrSetupForm{max-width:none}
+}
+@media (min-width:1600px){
+ .auth-card{width:min(100%,1240px);max-width:1240px;min-height:clamp(600px,72vh,760px)}
+ .auth-card:after{font-size:clamp(34px,2.4vw,46px)}
+}
+@media (min-width:2200px){
+ .auth-card{width:min(100%,1480px);max-width:1480px;min-height:clamp(680px,70vh,860px)}
+ .auth-card:after{font-size:clamp(42px,2.4vw,56px)}
+}
+@media (max-width:760px){
+ .auth-card{display:block;width:min(100%,470px);max-width:470px}
+}
+@media (min-width:761px) and (max-height:620px){
+ .auth-card{min-height:0;padding-top:22px;padding-bottom:20px}
+ .auth-brand{margin-bottom:14px}
+ .auth-description{margin-bottom:10px}
+ .auth-card label{margin-top:8px}
+ .auth-card input{min-height:42px}
+ .auth-submit{margin-top:12px;min-height:42px}
+ .auth-local-note{margin-top:12px;padding-top:10px}
+}
