@@ -5,6 +5,7 @@ let editingId = null;
 let toastTimer;
 let saleCart = [];
 let lastReceipt = null;
+let editingSale = null; // venda sendo editada em "Registrar venda"
 
 function emptyData(){return {version:3,products:[],movements:[],customers:[]};}
 function loadData(){try{const raw=localStorage.getItem(STORAGE_KEY);if(!raw)return emptyData();const parsed=JSON.parse(raw);if(!Array.isArray(parsed.products)||!Array.isArray(parsed.movements))return emptyData();if(!Array.isArray(parsed.customers))parsed.customers=[];return parsed;}catch(e){return emptyData();}}
@@ -98,28 +99,33 @@ function bindMoneyMask(input, {percent=false}={}){
 function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function toast(message,error=false){const el=document.getElementById('toast');el.textContent=message;el.classList.toggle('error',error);el.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove('show'),3200);}
 function productById(pid){return data.products.find(p=>p.id===pid);}
-function recordMovement(type,p,qty,total,details='',extra={}){data.movements.unshift({id:id(),type,productId:p.id,productName:p.name,quantity:Number(qty),total:Number(total||0),details,...extra,date:new Date().toISOString()});}
+function recordMovement(type,p,qty,total,details='',extra={}){data.movements.unshift({id:id(),type,productId:p.id,productName:p.name,quantity:Number(qty),total:Number(total||0),details,date:new Date().toISOString(),...extra});}
+function typePill(m){if(m.type==='venda'&&m.canceled)return '<span class="pill cancelada">Venda cancelada</span>';return `<span class="pill ${m.type}">${m.type==='venda'?'Venda':'Entrada'}</span>`;}
 function dateText(d){return new Date(d).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'});}
 // Usuários que não são ADMIN só acessam estes painéis:
 const USER_PANELS=['dashboard','clientes','venda'];
-function goTo(name){if(document.body.dataset.ckrRole!=='admin'&&!USER_PANELS.includes(name)){toast('Seu acesso permite apenas Visão geral, Clientes e Registrar venda.',true);return;}document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active',p.id===`panel-${name}`));document.querySelectorAll('.nav-link').forEach(b=>b.classList.toggle('active',b.dataset.panel===name));const selected=document.querySelector(`.nav-link[data-panel="${name}"]`);document.getElementById('pageBreadcrumb').textContent=selected?selected.textContent.trim().replace(/\d+$/,'').trim():'Visão geral';document.getElementById('sidebar').classList.remove('open');window.scrollTo({top:0,behavior:'smooth'});}
+// Perfis: admin (tudo + usuários, sem prazo) | master (tudo, menos usuários, com prazo) | usuario (só USER_PANELS, com prazo)
+function hasFullAccess(){const r=document.body.dataset.ckrRole;return r==='admin'||r==='master';}
+function canAccessPanel(name){return hasFullAccess()||USER_PANELS.includes(name);}
+function currentUserName(){return document.body.dataset.ckrUser||'';}
+function goTo(name){if(!canAccessPanel(name)){toast('Seu acesso permite apenas Visão geral, Clientes e Registrar venda.',true);return;}document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active',p.id===`panel-${name}`));document.querySelectorAll('.nav-link').forEach(b=>b.classList.toggle('active',b.dataset.panel===name));const selected=document.querySelector(`.nav-link[data-panel="${name}"]`);document.getElementById('pageBreadcrumb').textContent=selected?selected.textContent.trim().replace(/\d+$/,'').trim():'Visão geral';document.getElementById('sidebar').classList.remove('open');window.scrollTo({top:0,behavior:'smooth'});}
 document.querySelectorAll('[data-panel]').forEach(b=>b.addEventListener('click',()=>goTo(b.dataset.panel)));
 document.querySelectorAll('[data-go]').forEach(b=>b.addEventListener('click',()=>goTo(b.dataset.go)));
 document.getElementById('mobileMenu').addEventListener('click',()=>document.getElementById('sidebar').classList.toggle('open'));
 document.getElementById('closeNotice').addEventListener('click',()=>document.querySelector('.notice').style.display='none');
 document.getElementById('todayLabel').textContent=new Date().toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'short',year:'numeric'});
 
-function renderAll(){renderStats();renderProducts();renderSelects();renderHistory();renderRecent();renderCustomers();renderDashboardInsights();renderDateReport();}
+function renderAll(){renderStats();renderProducts();renderSelects();renderHistory();renderRecent();renderCustomers();renderDashboardInsights();renderDateReport();renderSaleSearch();}
 function renderStats(){
  document.getElementById('totalProdutos').textContent=data.products.length;
  document.getElementById('menuProdutos').textContent=data.products.length;
   document.getElementById('menuClientes').textContent=(data.customers||[]).length;
  document.getElementById('totalUnidades').textContent=data.products.reduce((s,p)=>s+Number(p.stock||0),0);
- document.getElementById('totalVendas').textContent=data.movements.filter(m=>m.type==='venda').length;
+ document.getElementById('totalVendas').textContent=data.movements.filter(m=>m.type==='venda'&&!m.canceled).length;
  document.getElementById('valorEstoque').textContent=money(data.products.reduce((s,p)=>s+Number(p.stock||0)*Number(p.cost||0),0));
  // O lucro só usa vendas que guardam o custo real da época da venda.
  // Vendas antigas sem esse registro não podem ser recalculadas com segurança.
- const vendas=data.movements.filter(m=>m.type==='venda');
+ const vendas=data.movements.filter(m=>m.type==='venda'&&!m.canceled);
  const vendasComCusto=vendas.filter(m=>m.costTotal!==undefined && Number.isFinite(Number(m.costTotal)));
  const receitaHistorica=vendasComCusto.reduce((s,m)=>s+Number(m.total||0),0);
  const custoHistorico=vendasComCusto.reduce((s,m)=>s+Number(m.costTotal||0),0);
@@ -147,19 +153,19 @@ function renderSelects(){
 function renderHistory(){
  const filter=document.getElementById('filtroTipo').value;
  const list=data.movements.filter(m=>filter==='todos'||m.type===filter);
- document.getElementById('listaHistorico').innerHTML=list.map(m=>`<tr><td>${esc(dateText(m.date))}</td><td><span class="pill ${m.type}">${m.type==='venda'?'Venda':'Entrada'}</span></td><td><span class="product-name">${esc(m.productName)}</span></td><td>${Number(m.quantity)}</td><td>${money(m.total)}</td><td>${esc(m.details||'—')}</td></tr>`).join('');
+ document.getElementById('listaHistorico').innerHTML=list.map(m=>`<tr${m.canceled?' class="row-canceled"':''}><td>${esc(dateText(m.date))}</td><td>${typePill(m)}</td><td><span class="product-name">${esc(m.productName)}</span></td><td>${Number(m.quantity)}</td><td>${money(m.total)}</td><td>${esc(m.details||'—')}</td></tr>`).join('');
  document.getElementById('semHistorico').style.display=list.length?'none':'block';
 }
 function renderRecent(){
  const list=data.movements.slice(0,5);
- document.getElementById('recentRows').innerHTML=list.map(m=>`<tr><td><span class="pill ${m.type}">${m.type==='venda'?'Venda':'Entrada'}</span></td><td><span class="product-name">${esc(m.productName)}</span></td><td>${m.type==='venda'?'−':'+'}${Number(m.quantity)}</td><td>${money(m.total)}</td><td>${esc(dateText(m.date))}</td></tr>`).join('');
+ document.getElementById('recentRows').innerHTML=list.map(m=>`<tr><td>${typePill(m)}</td><td><span class="product-name">${esc(m.productName)}</span></td><td>${m.type==='venda'?'−':'+'}${Number(m.quantity)}</td><td>${money(m.total)}</td><td>${esc(dateText(m.date))}</td></tr>`).join('');
  document.getElementById('recentEmpty').style.display=list.length?'none':'block';
 }
 
 function localDateKey(value){const d=new Date(value);if(Number.isNaN(d.getTime()))return '';return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
 function renderDashboardInsights(){
  const now=new Date(),days=[];
- for(let i=6;i>=0;i--){const d=new Date(now);d.setHours(0,0,0,0);d.setDate(d.getDate()-i);const key=localDateKey(d);const total=data.movements.filter(m=>m.type==='venda'&&localDateKey(m.date)===key).reduce((s,m)=>s+Number(m.total||0),0);days.push({key,label:d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}),total});}
+ for(let i=6;i>=0;i--){const d=new Date(now);d.setHours(0,0,0,0);d.setDate(d.getDate()-i);const key=localDateKey(d);const total=data.movements.filter(m=>m.type==='venda'&&!m.canceled&&localDateKey(m.date)===key).reduce((s,m)=>s+Number(m.total||0),0);days.push({key,label:d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}),total});}
  const max=Math.max(1,...days.map(x=>x.total)),w=700,h=250,left=58,right=18,top=22,bottom=42,plotW=w-left-right,plotH=h-top-bottom;
  const x=i=>left+(days.length===1?plotW/2:i*plotW/(days.length-1));
  const y=v=>top+plotH-(v/max)*plotH;
@@ -182,11 +188,11 @@ function getDateReportRows(){
  return data.movements.filter(m=>{const day=localDateKey(m.date);return (!start||day>=start)&&(!end||day<=end)&&(type==='todos'||m.type===type);}).sort((a,b)=>new Date(b.date)-new Date(a.date));
 }
 function renderDateReport(){
- const rows=getDateReportRows(),sales=rows.filter(m=>m.type==='venda').reduce((s,m)=>s+Number(m.total||0),0),entries=rows.filter(m=>m.type==='entrada').reduce((s,m)=>s+Number(m.total||0),0);
+ const rows=getDateReportRows(),sales=rows.filter(m=>m.type==='venda'&&!m.canceled).reduce((s,m)=>s+Number(m.total||0),0),entries=rows.filter(m=>m.type==='entrada').reduce((s,m)=>s+Number(m.total||0),0);
  const el=id=>document.getElementById(id);if(!el('relatorioRows'))return;
  el('relatorioTotalVendas').textContent=money(sales);el('relatorioTotalEntradas').textContent=money(entries);el('relatorioQtd').textContent=rows.length;
  const start=el('relatorioDataInicio').value,end=el('relatorioDataFim').value;el('relatorioDescricao').textContent=`${start?new Date(start+'T12:00:00').toLocaleDateString('pt-BR'):'Desde o início'} até ${end?new Date(end+'T12:00:00').toLocaleDateString('pt-BR'):'hoje'} · ${rows.length} registro(s)`;
- el('relatorioRows').innerHTML=rows.map(m=>`<tr><td>${esc(dateText(m.date))}</td><td><span class="pill ${m.type}">${m.type==='venda'?'Venda':'Entrada'}</span></td><td><span class="product-name">${esc(m.productName)}</span></td><td>${Number(m.quantity)}</td><td>${money(m.total)}</td><td>${esc([m.client?`Cliente: ${m.client}`:'',m.details||''].filter(Boolean).join(' · ')||'—')}</td></tr>`).join('');el('relatorioVazio').style.display=rows.length?'none':'block';
+ el('relatorioRows').innerHTML=rows.map(m=>`<tr><td>${esc(dateText(m.date))}</td><td>${typePill(m)}</td><td><span class="product-name">${esc(m.productName)}</span></td><td>${Number(m.quantity)}</td><td>${money(m.total)}</td><td>${esc([m.client?`Cliente: ${m.client}`:'',m.details||''].filter(Boolean).join(' · ')||'—')}</td></tr>`).join('');el('relatorioVazio').style.display=rows.length?'none':'block';
 }
 
 let editingCustomerId = null;
@@ -286,7 +292,7 @@ document.getElementById('adicionarAoCarrinho').addEventListener('click',()=>{
  const p=productById(document.getElementById('vendaProduto').value),qty=Number(document.getElementById('vendaQuantidade').value),price=parseMoneyInput(document.getElementById('vendaPreco').value);
  if(!p){toast('Selecione um produto.',true);return;}if(!Number.isInteger(qty)||qty<1){toast('Informe uma quantidade inteira maior que zero.',true);return;}if(!Number.isFinite(price)||price<0){toast('Informe um preço válido.',true);return;}
  const already=saleCart.filter(x=>x.productId===p.id).reduce((n,x)=>n+x.quantity,0);
- if(already+qty>Number(p.stock)){toast(`Estoque insuficiente para ${p.name}. Disponível: ${p.stock}.`,true);return;}
+ if(already+qty>availableStock(p)){toast(`Estoque insuficiente para ${p.name}. Disponível: ${availableStock(p)}.`,true);return;}
  const existing=saleCart.find(x=>x.productId===p.id&&x.price===Math.round(price*100)/100);
  if(existing)existing.quantity+=qty;else saleCart.push({productId:p.id,name:p.name,quantity:qty,price:Math.round(price*100)/100,cost:Number(p.cost||0)});
  document.getElementById('vendaQuantidade').value='1';renderCart();toast(`${p.name} adicionado ao carrinho.`);
@@ -298,7 +304,7 @@ function updatePaymentRow(row){
 function addPaymentRow(){
  const wrap=document.getElementById('linhasPagamento'),row=document.createElement('div');row.className='payment-row';
  row.innerHTML=`<div class="payment-row-main"><label class="field">Forma de pagamento<select class="pagamentoMetodo"><option value="">Selecione...</option><option>Pix</option><option>Dinheiro</option><option>Cartão de débito</option><option>Cartão de crédito</option><option>Transferência</option><option>Boleto</option><option>Outro</option></select></label><label class="field">Valor pago (R$)<input class="pagamentoValor" type="text" inputmode="numeric" autocomplete="off" placeholder="0,00"></label><button type="button" class="payment-remove" aria-label="Remover pagamento" title="Remover pagamento">×</button></div><div class="payment-card-options" hidden><label class="field">Parcelas<input class="pagamentoParcelas" type="number" min="1" step="1" value="1"></label><label class="field">Parcelamento<select class="pagamentoResponsavel"><option value="loja">Pela loja</option><option value="fabrica">Pela fábrica</option></select></label></div>`;
- wrap.appendChild(row);bindMoneyMask(row.querySelector('.pagamentoValor'));row.querySelector('.pagamentoMetodo').addEventListener('change',()=>{updatePaymentRow(row);updatePaymentSummary();});row.querySelector('.pagamentoValor').addEventListener('input',updatePaymentSummary);row.querySelector('.pagamentoParcelas').addEventListener('input',updatePaymentSummary);row.querySelector('.pagamentoResponsavel').addEventListener('change',updatePaymentSummary);row.querySelector('.payment-remove').addEventListener('click',()=>{row.remove();updatePaymentSummary();});updatePaymentRow(row);updatePaymentSummary();
+ wrap.appendChild(row);bindMoneyMask(row.querySelector('.pagamentoValor'));row.querySelector('.pagamentoMetodo').addEventListener('change',()=>{updatePaymentRow(row);updatePaymentSummary();});row.querySelector('.pagamentoValor').addEventListener('input',updatePaymentSummary);row.querySelector('.pagamentoParcelas').addEventListener('input',updatePaymentSummary);row.querySelector('.pagamentoResponsavel').addEventListener('change',updatePaymentSummary);row.querySelector('.payment-remove').addEventListener('click',()=>{row.remove();updatePaymentSummary();});updatePaymentRow(row);updatePaymentSummary();return row;
 }
 function readPayments(){
  return [...document.querySelectorAll('.payment-row')].map(row=>({method:row.querySelector('.pagamentoMetodo').value,amount:Math.round(parseMoneyInput(row.querySelector('.pagamentoValor').value)*100)/100,installments:row.querySelector('.pagamentoMetodo').value==='Cartão de crédito'?Number(row.querySelector('.pagamentoParcelas').value||0):null,responsible:row.querySelector('.pagamentoMetodo').value==='Cartão de crédito'?row.querySelector('.pagamentoResponsavel').value:null})).filter(x=>x.method||x.amount>0);
@@ -339,31 +345,196 @@ function receiptWhatsappText(receipt){
 document.getElementById('baixarReciboPdf').addEventListener('click',()=>{if(lastReceipt)createReceiptPdf(lastReceipt);});
 document.getElementById('enviarReciboWhatsapp').addEventListener('click',()=>{if(!lastReceipt)return;const phone=prompt('Digite o WhatsApp do cliente com DDD (somente números), ou deixe vazio para escolher uma conversa:','');if(phone===null)return;const number=phone.replace(/\D/g,'');if(number&&number.length<10){toast('Informe um número com DDD válido.',true);return;}const url=`https://wa.me/${number}?text=${encodeURIComponent(receiptWhatsappText(lastReceipt))}`;window.open(url,'_blank','noopener');toast('WhatsApp aberto. Anexe o PDF baixado para enviar o recibo completo.');});
 document.getElementById('formVenda').addEventListener('submit',e=>{
- e.preventDefault();if(!saleCart.length){toast('Adicione pelo menos um produto ao carrinho antes de confirmar.',true);return;}
+ e.preventDefault();
+ if(!saleCart.length){toast('Adicione pelo menos um produto ao carrinho antes de confirmar.',true);return;}
  const client=document.getElementById('vendaCliente').value.trim(),note=document.getElementById('vendaObs').value.trim(),totals=saleTotals(),payments=readPayments(),received=Math.round(payments.reduce((s,x)=>s+x.amount,0)*100)/100;
- for(const item of saleCart){const p=productById(item.productId);if(!p||item.quantity>p.stock){toast(`Estoque insuficiente ou produto removido: ${item.name}.`,true);return;}}
+ // Em edição: localiza os lançamentos originais (ainda ativos) e soma de volta o estoque que eles já baixaram.
+ let oldMovements=[];
+ if(editingSale){
+  oldMovements=data.movements.filter(m=>m.type==='venda'&&(m.saleId||m.id)===editingSale.saleId&&!m.canceled);
+  if(!oldMovements.length){toast('A venda original não está mais disponível para edição.',true);cancelSaleEdit();return;}
+ }
+ const oldQty={};oldMovements.forEach(m=>{oldQty[m.productId]=(oldQty[m.productId]||0)+Number(m.quantity||0);});
+ const need={};saleCart.forEach(item=>{need[item.productId]=(need[item.productId]||0)+item.quantity;});
+ for(const item of saleCart){const p=productById(item.productId);if(!p||need[item.productId]>Number(p.stock)+(oldQty[item.productId]||0)){toast(`Estoque insuficiente ou produto removido: ${item.name}.`,true);return;}}
  if(!payments.length||payments.some(x=>!x.method||x.amount<=0)){toast('Informe a forma e o valor de cada pagamento.',true);return;}
  if(payments.some(x=>x.method==='Cartão de crédito'&&(!Number.isInteger(x.installments)||x.installments<1))){toast('Informe um número válido de parcelas para cada cartão.',true);return;}
  if(Math.abs(received-totals.total)>0.009){toast(`Os pagamentos devem somar exatamente ${money(totals.total)}. Saldo: ${money(totals.total-received)}.`,true);return;}
  const paymentDetails=payments.map(x=>x.method==='Cartão de crédito'?`${x.method}: ${money(x.amount)} em ${x.installments}x (${x.responsible==='fabrica'?'fábrica':'loja'})`:`${x.method}: ${money(x.amount)}`).join(' | ');
  const discount= Math.round((totals.subtotal-totals.total)*100)/100;let allocated=0;
  const receiptItems=saleCart.map((item,index)=>{const raw=Math.round(item.quantity*item.price*100)/100;let lineTotal;if(index===saleCart.length-1)lineTotal=Math.round((totals.total-allocated)*100)/100;else{lineTotal=totals.subtotal?Math.round(raw*(totals.total/totals.subtotal)*100)/100:0;allocated+=lineTotal;}return {...item,lineTotal};});
- const saleId=Date.now().toString(36).toUpperCase();const date=new Date().toISOString();
- const detailPrefix=[client?`Cliente: ${client}`:'',`Venda ${saleId}`,`Subtotal: ${money(totals.subtotal)}`,discount?`Desconto total: ${money(discount)}`:'',`Pagamentos: ${paymentDetails}`,note].filter(Boolean).join(' · ');
+ const wasEditing=!!editingSale;
+ const saleId=wasEditing?editingSale.saleId:Date.now().toString(36).toUpperCase();
+ const date=wasEditing?editingSale.date:new Date().toISOString();
+ const customer=findCustomerForSale(client,'');
+ const detailPrefix=[client?`Cliente: ${client}`:'',`Venda ${saleId}`,wasEditing?'Venda editada':'',`Subtotal: ${money(totals.subtotal)}`,discount?`Desconto total: ${money(discount)}`:'',`Pagamentos: ${paymentDetails}`,note].filter(Boolean).join(' · ');
  const snapshot={id:saleId,date,client,note,items:receiptItems,subtotal:totals.subtotal,discount,total:totals.total};
- saleCart.forEach((item,index)=>{const p=productById(item.productId);const costTotal=Math.round(Number(p.cost||0)*item.quantity*100)/100;p.stock-=item.quantity;const detail=[detailPrefix,`Item ${index+1}/${saleCart.length}`].filter(Boolean).join(' · ');recordMovement('venda',p,item.quantity,receiptItems[index].lineTotal,detail,{client,payments,subtotal:totals.subtotal,discountCash:totals.discountCash,discountPercent:totals.discountPercent,unitPrice:item.price,unitCost:Number(p.cost||0),costTotal,profit:Math.round((receiptItems[index].lineTotal-costTotal)*100)/100,saleId});});
+ // A partir daqui os dados são alterados (todas as validações já passaram).
+ let insertAt=0;
+ if(wasEditing){
+  insertAt=Math.max(0,data.movements.findIndex(m=>oldMovements.includes(m)));
+  oldMovements.forEach(m=>{const p=productById(m.productId);if(p)p.stock=Number(p.stock||0)+Number(m.quantity||0);}); // devolve o estoque da versão antiga
+  data.movements=data.movements.filter(m=>!oldMovements.includes(m));
+ }
+ saleCart.forEach((item,index)=>{
+  const p=productById(item.productId);
+  const unitCost=Number.isFinite(Number(item.cost))?Number(item.cost):Number(p.cost||0);
+  const costTotal=Math.round(unitCost*item.quantity*100)/100;
+  p.stock-=item.quantity;
+  const detail=[detailPrefix,`Item ${index+1}/${saleCart.length}`].filter(Boolean).join(' · ');
+  const extra={client,clientCpf:customer?customer.cpf||'':'',customerId:customer?customer.id:'',note,payments,subtotal:totals.subtotal,discountCash:totals.discountCash,discountPercent:totals.discountPercent,unitPrice:item.price,unitCost,costTotal,profit:Math.round((receiptItems[index].lineTotal-costTotal)*100)/100,saleId,date};
+  if(wasEditing){extra.editedAt=new Date().toISOString();extra.editedBy=currentUserName();}
+  recordMovement('venda',p,item.quantity,receiptItems[index].lineTotal,detail,extra);
+ });
+ // Edição: os lançamentos novos voltam para a posição da venda original no histórico.
+ if(wasEditing){const created=data.movements.splice(0,saleCart.length);data.movements.splice(insertAt,0,...created);}
  if(saveData()){
-  lastReceipt=snapshot;saleCart=[];e.target.reset();document.getElementById('linhasPagamento').innerHTML='';addPaymentRow();document.getElementById('reciboAcoes').hidden=false;document.getElementById('reciboStatus').textContent=`Venda ${saleId} registrada. Baixe o PDF e envie ao cliente.`;renderCart();updateSalePreview();toast('Venda registrada, estoque atualizado e recibo disponível.');
+  lastReceipt=snapshot;saleCart=[];exitSaleEdit();e.target.reset();document.getElementById('linhasPagamento').innerHTML='';addPaymentRow();document.getElementById('reciboAcoes').hidden=false;
+  document.getElementById('reciboStatus').textContent=wasEditing?`Venda ${saleId} atualizada. Baixe o PDF atualizado e envie ao cliente.`:`Venda ${saleId} registrada. Baixe o PDF e envie ao cliente.`;
+  renderCart();updateSalePreview();toast(wasEditing?'Venda atualizada. Estoque, valores e lucro foram recalculados.':'Venda registrada, estoque atualizado e recibo disponível.');
  }
 });
+
+// ===== Movimentações: busca, edição e cancelamento de vendas =====
+const numOrNaN=v=>(v===undefined||v===null||v==='')?NaN:Number(v);
+function fold(s){return String(s??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();}
+function availableStock(p){return Number(p.stock||0)+(editingSale?(editingSale.qtyByProduct[p.id]||0):0);}
+function findCustomerForSale(client,customerId){
+ const list=data.customers||[];
+ if(customerId){const c=list.find(x=>x.id===customerId);if(c)return c;}
+ const name=fold(client).trim();
+ return name?(list.find(x=>fold(x.name).trim()===name)||null):null;
+}
+// Agrupa os lançamentos (um por item) em vendas completas pelo saleId.
+function getSales(){
+ const map=new Map();
+ data.movements.forEach(m=>{
+  if(m.type!=='venda')return;
+  const key=m.saleId||m.id;
+  let s=map.get(key);
+  if(!s){s={id:key,date:m.date,client:m.client||'',customerId:m.customerId||'',clientCpf:m.clientCpf||'',movements:[],total:0,profit:0,profitKnown:true,payments:Array.isArray(m.payments)?m.payments:[]};map.set(key,s);}
+  s.movements.push(m);
+  if(new Date(m.date)<new Date(s.date))s.date=m.date;
+  s.total+=Number(m.total||0);
+  if(Number.isFinite(numOrNaN(m.profit)))s.profit+=Number(m.profit);
+  else if(Number.isFinite(numOrNaN(m.costTotal)))s.profit+=Number(m.total||0)-Number(m.costTotal);
+  else s.profitKnown=false;
+ });
+ return [...map.values()].map(s=>{
+  s.total=Math.round(s.total*100)/100;s.profit=Math.round(s.profit*100)/100;
+  s.canceled=s.movements.every(m=>m.canceled);
+  s.canceledAt=s.canceled?((s.movements.find(m=>m.canceledAt)||{}).canceledAt||''):'';
+  s.edited=s.movements.some(m=>m.editedAt);
+  const cust=findCustomerForSale(s.client,s.customerId);
+  s.cpf=s.clientCpf||(cust&&cust.cpf)||'';
+  s.items=s.movements.slice().reverse().map(m=>{
+   const qty=Number(m.quantity||0),unit=numOrNaN(m.unitPrice);
+   return {productId:m.productId,name:m.productName,code:(productById(m.productId)||{}).code||'',quantity:qty,price:Number.isFinite(unit)?unit:(qty?Number(m.total||0)/qty:0),cost:m.unitCost,lineTotal:Number(m.total||0)};
+  });
+  return s;
+ }).sort((a,b)=>new Date(b.date)-new Date(a.date));
+}
+function saleMatches(s,tokens){
+ if(!tokens.length)return true;
+ const hay=fold([s.client,s.cpf,new Date(s.date).toLocaleDateString('pt-BR'),localDateKey(s.date),s.items.map(i=>`${i.name} ${i.code}`).join(' ')].join(' '));
+ const cpfDigits=digits(s.cpf),idFold=fold(s.id);
+ return tokens.every(t=>hay.includes(t)||(t.length>=4&&idFold.includes(t))||(/^[\d.\-]+$/.test(t)&&digits(t).length>=3&&cpfDigits.includes(digits(t))));
+}
+function renderSaleSearch(){
+ const body=document.getElementById('listaVendasBusca');if(!body)return;
+ const tokens=fold(document.getElementById('buscaVenda').value).split(/\s+/).filter(Boolean);
+ const start=document.getElementById('buscaVendaInicio').value,end=document.getElementById('buscaVendaFim').value,status=document.getElementById('buscaVendaStatus').value;
+ const sales=getSales().filter(s=>{
+  const day=localDateKey(s.date);
+  if(start&&day<start)return false;if(end&&day>end)return false;
+  if(status==='ativas'&&s.canceled)return false;if(status==='canceladas'&&!s.canceled)return false;
+  return saleMatches(s,tokens);
+ });
+ const active=sales.filter(s=>!s.canceled),LIMIT=100;
+ const totalAtivas=active.reduce((n,s)=>n+s.total,0),lucroAtivas=active.filter(s=>s.profitKnown).reduce((n,s)=>n+s.profit,0);
+ document.getElementById('vendasResumo').innerHTML=`<span><b>${sales.length}</b> ${sales.length===1?'venda encontrada':'vendas encontradas'}</span><span>Total das ativas: <b>${esc(money(totalAtivas))}</b></span><span>Lucro das ativas: <b>${esc(money(lucroAtivas))}</b></span><span>Canceladas: <b>${sales.length-active.length}</b></span>${sales.length>LIMIT?`<span>Mostrando as ${LIMIT} mais recentes — refine a busca para ver as demais.</span>`:''}`;
+ body.innerHTML=sales.slice(0,LIMIT).map(s=>`<tr class="${s.canceled?'row-canceled':''}">`
+  +`<td>${esc(dateText(s.date))}<br><small>Venda ${esc(s.id)}</small></td>`
+  +`<td><span class="product-name">${esc(s.client||'Sem cliente')}</span>${s.cpf?`<br><small>CPF ${esc(s.cpf)}</small>`:''}</td>`
+  +`<td><ul class="sale-items">${s.items.map(i=>`<li>${i.quantity}× ${esc(i.name)}</li>`).join('')}</ul></td>`
+  +`<td class="${s.canceled?'sale-money-canceled':''}">${esc(money(s.total))}</td>`
+  +`<td>${s.canceled||!s.profitKnown?'—':esc(money(s.profit))}</td>`
+  +`<td class="sale-status">${s.canceled?`<span class="pill cancelada">Cancelada</span>${s.canceledAt?`<br><small>${esc(dateText(s.canceledAt))}</small>`:''}`:'<span class="pill ativa">Ativa</span>'}${s.edited?'<br><small>editada</small>':''}</td>`
+  +`<td>${s.canceled?'—':`<button type="button" class="row-action" data-sale-edit="${esc(s.id)}">Editar</button><button type="button" class="row-action delete" data-sale-cancel="${esc(s.id)}">Cancelar venda</button>`}</td></tr>`).join('');
+ document.getElementById('semVendasBusca').style.display=sales.length?'none':'block';
+}
+function exitSaleEdit(){
+ editingSale=null;
+ const banner=document.getElementById('vendaEdicaoAviso');if(banner)banner.hidden=true;
+ const label=document.getElementById('confirmarVendaTexto');if(label)label.textContent='Confirmar venda e baixar estoque';
+}
+function cancelSaleEdit(){
+ exitSaleEdit();saleCart=[];
+ document.getElementById('formVenda').reset();document.getElementById('linhasPagamento').innerHTML='';addPaymentRow();
+ renderCart();updateSalePreview();
+}
+function startSaleEdit(saleId){
+ if(!hasFullAccess()){toast('Seu perfil não tem permissão para editar vendas.',true);return;}
+ const s=getSales().find(x=>x.id===saleId);if(!s||s.canceled)return;
+ if(!editingSale&&saleCart.length&&!confirm('O carrinho da venda em andamento será substituído pelos itens desta venda. Continuar?'))return;
+ const qtyByProduct={};s.movements.forEach(m=>{qtyByProduct[m.productId]=(qtyByProduct[m.productId]||0)+Number(m.quantity||0);});
+ editingSale={saleId:s.id,date:s.date,qtyByProduct};
+ const ref=s.movements[0],fmt=n=>Number(n).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+ saleCart=s.items.map(i=>({productId:i.productId,name:i.name,quantity:i.quantity,price:Math.round(i.price*100)/100,cost:Number.isFinite(numOrNaN(i.cost))?Number(i.cost):Number((productById(i.productId)||{}).cost||0)}));
+ // Observação: vendas novas guardam a nota separada; as antigas têm que ser extraídas do texto de detalhes.
+ let note=ref.note;
+ if(note===undefined){note=String(ref.details||'').split(' · ').filter(part=>!/^(Cliente:|Venda |Subtotal:|Desconto total:|Pagamentos:|Item \d+\/\d+)/.test(part)).join(' · ');}
+ document.getElementById('vendaCliente').value=s.client;
+ document.getElementById('vendaObs').value=note||'';
+ document.getElementById('vendaProduto').value='';document.getElementById('vendaQuantidade').value='';document.getElementById('vendaPreco').value='';
+ document.getElementById('vendaDescontoReais').value=Number(ref.discountCash)>0?fmt(ref.discountCash):'';
+ document.getElementById('vendaDescontoPercentual').value=Number(ref.discountPercent)>0?Number(ref.discountPercent).toLocaleString('pt-BR',{maximumFractionDigits:2}):'';
+ document.getElementById('linhasPagamento').innerHTML='';
+ (s.payments.length?s.payments:[null]).forEach(pm=>{
+  const row=addPaymentRow();if(!pm)return;
+  row.querySelector('.pagamentoMetodo').value=pm.method||'';
+  row.querySelector('.pagamentoValor').value=fmt(pm.amount||0);
+  if(pm.method==='Cartão de crédito'){row.querySelector('.pagamentoParcelas').value=pm.installments||1;row.querySelector('.pagamentoResponsavel').value=pm.responsible||'loja';}
+  updatePaymentRow(row);
+ });
+ document.getElementById('vendaEdicaoTitulo').textContent=`Editando a venda ${s.id}${s.client?' — '+s.client:''}`;
+ document.getElementById('vendaEdicaoAviso').hidden=false;
+ document.getElementById('confirmarVendaTexto').textContent='Salvar alterações da venda';
+ document.getElementById('reciboAcoes').hidden=true;
+ renderCart();goTo('venda');
+ toast('Venda carregada. Altere o que precisar e salve.');
+}
+function cancelSale(saleId){
+ if(!hasFullAccess()){toast('Seu perfil não tem permissão para cancelar vendas.',true);return;}
+ const s=getSales().find(x=>x.id===saleId);if(!s||s.canceled)return;
+ const lines=s.items.map(i=>`• ${i.quantity}× ${i.name}`).join('\n');
+ if(!confirm(`Cancelar a venda ${s.id}${s.client?' de '+s.client:''}?\n\n${lines}\n\nOs produtos voltarão ao estoque e ${money(s.total)} será retirado do total de vendas e do lucro.`))return;
+ const when=new Date().toISOString(),missing=[];
+ s.movements.forEach(m=>{
+  if(m.canceled)return;
+  const p=productById(m.productId);
+  if(p)p.stock=Number(p.stock||0)+Number(m.quantity||0);else missing.push(m.productName);
+  m.canceled=true;m.canceledAt=when;m.canceledBy=currentUserName();
+ });
+ if(editingSale&&editingSale.saleId===s.id)cancelSaleEdit();
+ if(saveData())toast(missing.length?`Venda cancelada. Não foi possível devolver ao estoque (produto excluído): ${missing.join(', ')}.`:'Venda cancelada. Estoque e valores atualizados.',missing.length>0);
+}
+document.getElementById('listaVendasBusca').addEventListener('click',e=>{
+ const edit=e.target.closest('[data-sale-edit]'),cancel=e.target.closest('[data-sale-cancel]');
+ if(edit)startSaleEdit(edit.dataset.saleEdit);else if(cancel)cancelSale(cancel.dataset.saleCancel);
+});
+['buscaVenda'].forEach(k=>document.getElementById(k).addEventListener('input',renderSaleSearch));
+['buscaVendaInicio','buscaVendaFim','buscaVendaStatus'].forEach(k=>document.getElementById(k).addEventListener('change',renderSaleSearch));
+document.getElementById('limparBuscaVenda').addEventListener('click',()=>{['buscaVenda','buscaVendaInicio','buscaVendaFim'].forEach(k=>document.getElementById(k).value='');document.getElementById('buscaVendaStatus').value='todas';renderSaleSearch();});
+document.getElementById('cancelarEdicaoVenda').addEventListener('click',()=>{cancelSaleEdit();toast('Edição cancelada. Nada foi alterado.');});
 document.getElementById('filtroTipo').addEventListener('change',renderHistory);
 document.getElementById('limparHistorico').addEventListener('click',()=>{if(!confirm('Apagar o histórico? Os produtos e quantidades em estoque serão mantidos.'))return;data.movements=[];if(saveData())toast('Histórico apagado.');});
-document.getElementById('fazerBackup').addEventListener('click',()=>{if(document.body.dataset.ckrRole!=='admin'){toast('Somente o ADMIN pode fazer backup.',true);return;}const blob=new Blob([JSON.stringify({...data,exportedAt:new Date().toISOString()},null,2)],{type:'application/json;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`conceito-backup-${new Date().toISOString().slice(0,10)}.json`;document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);toast('Backup exportado. Guarde o arquivo em local seguro.');});
-document.getElementById('restaurarBackup').addEventListener('click',async()=>{if(document.body.dataset.ckrRole!=='admin'){toast('Somente o ADMIN pode restaurar backup.',true);return;}const file=document.getElementById('arquivoBackup').files[0];if(!file){toast('Escolha um arquivo JSON primeiro.',true);return;}if(!confirm('A restauração vai substituir os dados deste dispositivo. Deseja continuar?'))return;try{const imported=JSON.parse(await file.text());if(!Array.isArray(imported.products)||!Array.isArray(imported.movements))throw Error('Formato');for(const p of imported.products){if(!p.id||!String(p.name||'').trim()||!Number.isFinite(Number(p.stock))||Number(p.stock)<0)throw Error('Produto');}data={version:3,products:imported.products,movements:imported.movements,customers:Array.isArray(imported.customers)?imported.customers:[]};if(saveData()){document.getElementById('arquivoBackup').value='';resetProductForm();toast('Backup restaurado com sucesso.');}}catch(err){toast('Arquivo inválido ou incompatível com o Conceito Web V2.',true);}});
-document.getElementById('apagarTudo').addEventListener('click',()=>{if(document.body.dataset.ckrRole!=='admin'){toast('Somente o ADMIN pode apagar os dados.',true);return;}if(!confirm('Isso apagará todos os produtos, clientes, entradas e vendas deste navegador. Continuar?'))return;if(!confirm('Confirme mais uma vez. Só será possível recuperar com backup.'))return;data=emptyData();if(saveData()){resetProductForm();toast('Dados locais apagados.');}});
+document.getElementById('fazerBackup').addEventListener('click',()=>{if(!hasFullAccess()){toast('Seu perfil não tem permissão para fazer backup.',true);return;}const blob=new Blob([JSON.stringify({...data,exportedAt:new Date().toISOString()},null,2)],{type:'application/json;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`conceito-backup-${new Date().toISOString().slice(0,10)}.json`;document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);toast('Backup exportado. Guarde o arquivo em local seguro.');});
+document.getElementById('restaurarBackup').addEventListener('click',async()=>{if(!hasFullAccess()){toast('Seu perfil não tem permissão para restaurar backup.',true);return;}const file=document.getElementById('arquivoBackup').files[0];if(!file){toast('Escolha um arquivo JSON primeiro.',true);return;}if(!confirm('A restauração vai substituir os dados deste dispositivo. Deseja continuar?'))return;try{const imported=JSON.parse(await file.text());if(!Array.isArray(imported.products)||!Array.isArray(imported.movements))throw Error('Formato');for(const p of imported.products){if(!p.id||!String(p.name||'').trim()||!Number.isFinite(Number(p.stock))||Number(p.stock)<0)throw Error('Produto');}data={version:3,products:imported.products,movements:imported.movements,customers:Array.isArray(imported.customers)?imported.customers:[]};if(saveData()){document.getElementById('arquivoBackup').value='';resetProductForm();toast('Backup restaurado com sucesso.');}}catch(err){toast('Arquivo inválido ou incompatível com o Conceito Web V2.',true);}});
+document.getElementById('apagarTudo').addEventListener('click',()=>{if(!hasFullAccess()){toast('Seu perfil não tem permissão para apagar os dados.',true);return;}if(!confirm('Isso apagará todos os produtos, clientes, entradas e vendas deste navegador. Continuar?'))return;if(!confirm('Confirme mais uma vez. Só será possível recuperar com backup.'))return;data=emptyData();if(saveData()){resetProductForm();toast('Dados locais apagados.');}});
 document.getElementById('gerarRelatorio').addEventListener('click',()=>{const a=document.getElementById('relatorioDataInicio').value,b=document.getElementById('relatorioDataFim').value;if(a&&b&&a>b){toast('A data inicial não pode ser posterior à data final.',true);return;}renderDateReport();});
 ['relatorioDataInicio','relatorioDataFim','relatorioTipo'].forEach(k=>document.getElementById(k).addEventListener('change',renderDateReport));
-document.getElementById('exportarRelatorioCsv').addEventListener('click',()=>{const rows=getDateReportRows();const cell=v=>'"'+String(v??'').replace(/"/g,'""')+'"';const lines=[['Data e hora','Tipo','Produto','Quantidade','Valor','Cliente','Detalhes'].map(cell).join(';'),...rows.map(m=>[dateText(m.date),m.type==='venda'?'Venda':'Entrada',m.productName,m.quantity,Number(m.total||0).toFixed(2).replace('.',','),m.client||'',m.details||''].map(cell).join(';'))];const blob=new Blob(['\ufeff'+lines.join('\r\n')],{type:'text/csv;charset=utf-8;'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`conceito-relatorio-${document.getElementById('relatorioDataInicio').value||'inicio'}-${document.getElementById('relatorioDataFim').value||'hoje'}.csv`;document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);});
+document.getElementById('exportarRelatorioCsv').addEventListener('click',()=>{const rows=getDateReportRows();const cell=v=>'"'+String(v??'').replace(/"/g,'""')+'"';const lines=[['Data e hora','Tipo','Produto','Quantidade','Valor','Cliente','Detalhes'].map(cell).join(';'),...rows.map(m=>[dateText(m.date),m.type==='venda'?(m.canceled?'Venda cancelada':'Venda'):'Entrada',m.productName,m.quantity,Number(m.total||0).toFixed(2).replace('.',','),m.client||'',m.details||''].map(cell).join(';'))];const blob=new Blob(['\ufeff'+lines.join('\r\n')],{type:'text/csv;charset=utf-8;'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`conceito-relatorio-${document.getElementById('relatorioDataInicio').value||'inicio'}-${document.getElementById('relatorioDataFim').value||'hoje'}.csv`;document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);});
 document.getElementById('imprimirRelatorio').addEventListener('click',()=>{renderDateReport();window.print();});
 // Período padrão: mês atual
 const reportToday=new Date();document.getElementById('relatorioDataInicio').value=`${reportToday.getFullYear()}-${String(reportToday.getMonth()+1).padStart(2,'0')}-01`;document.getElementById('relatorioDataFim').value=localDateKey(reportToday);
@@ -423,13 +594,29 @@ addPaymentRow();
      localStorage.setItem(SEED_KEY,'1');
    }
  }catch(e){}
+ // ===== USUÁRIO MASTER PADRÃO (com prazo) =====
+ // Padrão: usuário  master  /  senha  master 123  (com espaço)  -> todas as funções, MENOS "Gerenciar usuários".
+ // Tem prazo de uso como os demais (começa a contar no 1º uso neste navegador). O ADMIN pode renovar, trocar a senha ou excluir.
+ const DEFAULT_MASTER={username:'master',password:'sha256:7d0b5dd249519af18f5e986b20303dcd5e29ee57e88bf73bfd90c4c34b715d7f',days:182.5};
+ const MASTER_SEED_KEY='ckr_web_default_master_seeded_v1';
+ try{
+   if(!localStorage.getItem(MASTER_SEED_KEY)){
+     const taken=users.some(u=>String(u.username||'').trim().toLowerCase()===DEFAULT_MASTER.username)||DEFAULT_MASTER.username===String(admin.username).trim().toLowerCase();
+     if(!taken){
+       const now=Date.now();
+       users.push({username:DEFAULT_MASTER.username,password:DEFAULT_MASTER.password,role:'master',createdAt:new Date(now).toISOString(),expiresAt:new Date(now+DEFAULT_MASTER.days*86400000).toISOString()});
+       localStorage.setItem(USERS_KEY,JSON.stringify(users));
+     }
+     localStorage.setItem(MASTER_SEED_KEY,'1');
+   }
+ }catch(e){}
  const saveUsers=()=>localStorage.setItem(USERS_KEY,JSON.stringify(users));
  const normalized=s=>String(s||'').trim().toLowerCase();
  function showLogin(){gate.hidden=false;shell.hidden=true;loginForm.hidden=false;setupForm.hidden=true;showSetupButton.hidden=!!(admin&&admin.username&&admin.password);desc.textContent='Informe seu usuário e senha para continuar.';error.textContent='';userInput.focus();}
  function showSetup(){gate.hidden=false;shell.hidden=true;loginForm.hidden=true;setupForm.hidden=false;showSetupButton.hidden=true;desc.textContent='Crie o usuário ADMIN e uma senha para este navegador.';setupError.textContent='';document.getElementById('ckrSetupUser').focus();}
  showSetupButton.addEventListener('click',()=>{showSetup();});
  function updateExpiryStatus(){const el=document.getElementById('ckrExpiryStatus');if(!el)return;if(!currentUser||currentUser.role==='admin'){el.hidden=true;el.textContent='';return;}const found=users.find(u=>normalized(u.username)===normalized(currentUser.username));if(!found||!found.expiresAt){el.hidden=true;el.textContent='';return;}const remaining=new Date(found.expiresAt).getTime()-Date.now();if(remaining<=0){el.textContent='◷ Acesso expirado';el.hidden=false;el.classList.add('expired');return;}const days=Math.ceil(remaining/(24*60*60*1000));el.textContent='◷ '+days+' '+(days===1?'dia':'dias');el.hidden=false;el.classList.remove('expired');}
- function enter(user){currentUser=user;document.body.dataset.ckrRole=user.role;sessionStorage.setItem(SESSION_KEY,JSON.stringify({username:user.username,role:user.role}));gate.hidden=true;shell.hidden=false;document.getElementById('ckrUserAvatar').textContent=(user.username||'AD').trim().slice(0,2).toUpperCase();manageButton.hidden=user.role!=='admin';if(manageSidebar)manageSidebar.hidden=user.role!=='admin';document.querySelectorAll('[data-panel],[data-go]').forEach(el=>{const target=el.dataset.panel||el.dataset.go;el.hidden=user.role!=='admin'&&!USER_PANELS.includes(target);});updateExpiryStatus();if(user.role!=='admin'){const act=document.querySelector('.panel.active');if(!act||!USER_PANELS.includes(act.id.replace('panel-','')))goTo('dashboard');}}
+ function enter(user){currentUser=user;document.body.dataset.ckrRole=user.role;document.body.dataset.ckrUser=user.username;sessionStorage.setItem(SESSION_KEY,JSON.stringify({username:user.username,role:user.role}));gate.hidden=true;shell.hidden=false;document.getElementById('ckrUserAvatar').textContent=(user.username||'AD').trim().slice(0,2).toUpperCase();manageButton.hidden=user.role!=='admin';if(manageSidebar)manageSidebar.hidden=user.role!=='admin';document.querySelectorAll('[data-panel],[data-go]').forEach(el=>{const target=el.dataset.panel||el.dataset.go;el.hidden=!canAccessPanel(target);});updateExpiryStatus();{const act=document.querySelector('.panel.active');if(!act||!canAccessPanel(act.id.replace('panel-','')))goTo('dashboard');}}
  function getValidUser(username,password){
    if(admin&&normalized(username)===normalized(admin.username)&&passOk(admin.password,password)){
      if(!String(admin.password).startsWith('sha256:')){admin={...admin,password:hashPw(password)};try{localStorage.setItem(AUTH_KEY,JSON.stringify(admin));}catch(e){}}
@@ -439,7 +626,7 @@ addPaymentRow();
    if(!found||!passOk(found.password,password))return null;
    if(found.expiresAt && Date.now()>=new Date(found.expiresAt).getTime())return {expired:true,username:found.username};
    if(!String(found.password).startsWith('sha256:')){found.password=hashPw(password);try{saveUsers();}catch(e){}}
-   return {username:found.username,role:'usuario'};
+   return {username:found.username,role:found.role==='master'?'master':'usuario'};
  }
  const changePasswordForm=document.getElementById('ckrChangePasswordForm');
  function hidePasswordChange(){
@@ -496,9 +683,9 @@ addPaymentRow();
      row.className='users-row';
      const info=document.createElement('div');
      const name=document.createElement('strong');
-     name.textContent=u.username;
+     name.textContent=u.username+(u.role==='master'?' (MASTER)':'');
      const meta=document.createElement('small');
-     meta.textContent=u.expiresAt?((Date.now()>=new Date(u.expiresAt).getTime()?'EXPIRADO em ':'Expira em ')+new Date(u.expiresAt).toLocaleString('pt-BR')):'Prazo não definido';
+     meta.textContent=(u.role==='master'?'Master • ':'Usuário • ')+(u.expiresAt?((Date.now()>=new Date(u.expiresAt).getTime()?'EXPIRADO em ':'Expira em ')+new Date(u.expiresAt).toLocaleString('pt-BR')):'Prazo não definido');
      info.append(name,meta);
 
      const actions=document.createElement('div');
@@ -577,6 +764,7 @@ addPaymentRow();
    document.getElementById('ckrEditTarget').textContent=u.username;
    document.getElementById('ckrEditUsername').value=u.username;
    document.getElementById('ckrEditExpiry').value=toLocalInput(u.expiresAt);
+   document.getElementById('ckrEditRole').value=u.role==='master'?'master':'usuario';
    document.getElementById('ckrEditError').textContent='';
    editForm.hidden=false;editForm.style.display='grid';
    document.getElementById('ckrEditUsername').focus();
@@ -593,9 +781,9 @@ addPaymentRow();
    if(name.length<3){err.textContent='O usuário precisa ter pelo menos 3 caracteres.';return;}
    if(!exp||isNaN(new Date(exp))){err.textContent='Informe a data e hora de validade.';return;}
    if(normalized(name)===normalized(admin.username)||users.some(x=>x!==u&&normalized(x.username)===normalized(name))){err.textContent='Esse nome de usuário já está cadastrado.';return;}
-   const backup={username:u.username,expiresAt:u.expiresAt};
-   u.username=name;u.expiresAt=new Date(exp).toISOString();
-   try{saveUsers();hideEditUser();renderUsers();toast('Usuário atualizado.');}catch(ex){u.username=backup.username;u.expiresAt=backup.expiresAt;err.textContent='Não foi possível salvar neste navegador.';}
+   const backup={username:u.username,expiresAt:u.expiresAt,role:u.role};
+   u.username=name;u.expiresAt=new Date(exp).toISOString();u.role=document.getElementById('ckrEditRole').value==='master'?'master':'usuario';
+   try{saveUsers();hideEditUser();renderUsers();toast('Usuário atualizado.');}catch(ex){u.username=backup.username;u.expiresAt=backup.expiresAt;u.role=backup.role;err.textContent='Não foi possível salvar neste navegador.';}
  });
  function openUsers(){
    if(!currentUser||currentUser.role!=='admin'){
@@ -616,14 +804,17 @@ addPaymentRow();
    if(username.length<3){err.textContent='O usuário precisa ter pelo menos 3 caracteres.';return;}if(password.length<6){err.textContent='A senha precisa ter pelo menos 6 caracteres.';return;}if(password!==confirmPassword){err.textContent='As senhas não coincidem.';return;}
    if(normalized(username)===normalized(admin.username)||users.some(u=>normalized(u.username)===normalized(username))){err.textContent='Esse nome de usuário já está cadastrado.';return;}
    const days=Number(document.getElementById('ckrNewValidity').value)||182.5;
-   const created=Date.now(), expiry=new Date(created+days*24*60*60*1000).toISOString();users.push({username,password:hashPw(password),createdAt:new Date(created).toISOString(),expiresAt:expiry});
+   const created=Date.now(), expiry=new Date(created+days*24*60*60*1000).toISOString();users.push({username,password:hashPw(password),role:document.getElementById('ckrNewRole').value==='master'?'master':'usuario',createdAt:new Date(created).toISOString(),expiresAt:expiry});
    try{saveUsers();renderUsers();e.target.reset();toast('Usuário criado. Acesso até '+new Date(expiry).toLocaleDateString('pt-BR')+'.');}catch(ex){users.pop();err.textContent='Não foi possível salvar o usuário neste navegador.';}
  });
  if(!admin||!admin.username||!admin.password){showSetup();}
- else if(sessionStorage.getItem(SESSION_KEY)){try{const sess=JSON.parse(sessionStorage.getItem(SESSION_KEY));let u=null;if(sess.role==='admin'&&normalized(sess.username)===normalized(admin.username))u={username:admin.username,role:'admin'};else{const f=users.find(x=>normalized(x.username)===normalized(sess.username));if(f&&!(f.expiresAt&&Date.now()>=new Date(f.expiresAt).getTime()))u={username:f.username,role:'usuario'};}if(u)enter(u);else{sessionStorage.removeItem(SESSION_KEY);showLogin();}}catch(e){showLogin();}}
+ else if(sessionStorage.getItem(SESSION_KEY)){try{const sess=JSON.parse(sessionStorage.getItem(SESSION_KEY));let u=null;if(sess.role==='admin'&&normalized(sess.username)===normalized(admin.username))u={username:admin.username,role:'admin'};else{const f=users.find(x=>normalized(x.username)===normalized(sess.username));if(f&&!(f.expiresAt&&Date.now()>=new Date(f.expiresAt).getTime()))u={username:f.username,role:f.role==='master'?'master':'usuario'};}if(u)enter(u);else{sessionStorage.removeItem(SESSION_KEY);showLogin();}}catch(e){showLogin();}}
  else{showLogin();}
  setupForm.addEventListener('submit',e=>{e.preventDefault();setupError.textContent='';const username=document.getElementById('ckrSetupUser').value.trim(),password=document.getElementById('ckrSetupPassword').value,confirmPassword=document.getElementById('ckrSetupConfirm').value;if(username.length<3){setupError.textContent='O usuário deve ter pelo menos 3 caracteres.';return;}if(password.length<6){setupError.textContent='A senha precisa ter pelo menos 6 caracteres.';return;}if(password!==confirmPassword){setupError.textContent='As senhas não são iguais.';return;}try{localStorage.setItem(AUTH_KEY,JSON.stringify({username,password}));admin={username,password};enter({username,role:'admin'});toast('Administrador criado neste navegador.');}catch(err){setupError.textContent='Não foi possível salvar as credenciais neste navegador.';}});
  loginForm.addEventListener('submit',e=>{e.preventDefault();error.textContent='';const username=userInput.value.trim(),password=passInput.value,u=getValidUser(username,password);if(u&&u.expired){error.textContent='O prazo de uso deste usuário terminou. Solicite ao ADMIN um novo acesso.';passInput.value='';return;}if(u){passInput.value='';enter(u);}else{error.textContent='Usuário ou senha incorretos.';passInput.value='';passInput.focus();}});
- setInterval(updateExpiryStatus,60000);
- document.getElementById('ckrLogout').addEventListener('click',()=>{sessionStorage.removeItem(SESSION_KEY);currentUser=null;updateExpiryStatus();delete document.body.dataset.ckrRole;closeUsers();showLogin();passInput.value='';});
+ function doLogout(){if(editingSale||saleCart.length)cancelSaleEdit();sessionStorage.removeItem(SESSION_KEY);currentUser=null;updateExpiryStatus();delete document.body.dataset.ckrRole;delete document.body.dataset.ckrUser;closeUsers();showLogin();passInput.value='';}
+ // Master e Usuário perdem o acesso assim que o prazo termina, mesmo com o sistema aberto. O ADMIN nunca expira.
+ function checkExpiry(){if(!currentUser||currentUser.role==='admin')return;const f=users.find(u=>normalized(u.username)===normalized(currentUser.username));if(!f||(f.expiresAt&&Date.now()>=new Date(f.expiresAt).getTime())){const removed=!f;doLogout();error.textContent=removed?'Este usuário não existe mais. Solicite acesso ao ADMIN.':'O prazo de uso deste usuário terminou. Solicite ao ADMIN um novo acesso.';}}
+ setInterval(()=>{checkExpiry();updateExpiryStatus();},60000);
+ document.getElementById('ckrLogout').addEventListener('click',doLogout);
 })();
