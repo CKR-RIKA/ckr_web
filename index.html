@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#101a2c">
   <title>Conceito • Gestão de Estoque</title>
-  <link rel="stylesheet" href="style.css?v=6">
+  <link rel="stylesheet" href="style.css?v=7">
 </head>
 <body>
   <section id="ckrAuthGate" class="auth-gate" aria-labelledby="authTitle">
@@ -44,9 +44,11 @@
         <label for="ckrNewUsername">Nome de usuário</label><input id="ckrNewUsername" required minlength="3" maxlength="60" placeholder="Ex.: vendedor01">
         <label for="ckrNewPassword">Senha (mínimo 6 caracteres)</label><input id="ckrNewPassword" type="password" required minlength="6" maxlength="120" autocomplete="new-password" placeholder="Crie uma senha">
         <label for="ckrNewPasswordConfirm">Confirmar senha</label><input id="ckrNewPasswordConfirm" type="password" required minlength="6" maxlength="120" autocomplete="new-password" placeholder="Repita a senha">
+        <label for="ckrNewRole">Perfil de acesso</label>
+        <select id="ckrNewRole"><option value="usuario" selected>Usuário — Visão geral, Clientes e Registrar venda</option><option value="master">Master — todas as funções, exceto Gerenciar usuários</option></select>
         <label for="ckrNewValidity">Tempo de uso do usuário</label>
         <select id="ckrNewValidity"><option value="7">7 dias</option><option value="15">15 dias</option><option value="30">30 dias</option><option value="60">60 dias</option><option value="90">90 dias</option><option value="182.5" selected>6 meses (182,5 dias)</option><option value="365">1 ano</option></select>
-        <div class="users-expiry-note">O ADMIN tem acesso permanente. Os demais usuários perdem o acesso quando o prazo termina e o ADMIN pode renovar em "Editar".</div>
+        <div class="users-expiry-note">O ADMIN tem acesso permanente e ilimitado. Os perfis Master e Usuário perdem o acesso quando o prazo termina e o ADMIN pode renovar em "Editar".</div>
         <p id="ckrUsersError" class="auth-error" role="alert"></p><button class="button button-primary auth-submit" type="submit">Criar usuário</button>
       </form>
       <form id="ckrEditUserForm" autocomplete="off" hidden style="display:none">
@@ -54,6 +56,8 @@
         <p>Usuário selecionado: <strong id="ckrEditTarget"></strong></p>
         <label for="ckrEditUsername">Nome de usuário</label>
         <input id="ckrEditUsername" required minlength="3" maxlength="60">
+        <label for="ckrEditRole">Perfil de acesso</label>
+        <select id="ckrEditRole"><option value="usuario">Usuário — Visão geral, Clientes e Registrar venda</option><option value="master">Master — todas as funções, exceto Gerenciar usuários</option></select>
         <label for="ckrEditExpiry">Acesso válido até</label>
         <input id="ckrEditExpiry" type="datetime-local" required>
         <div class="users-renew"><span>Renovar a partir de hoje:</span><button type="button" class="button" data-renew-days="30">+30 dias</button><button type="button" class="button" data-renew-days="90">+90 dias</button><button type="button" class="button" data-renew-days="365">+1 ano</button></div>
@@ -97,7 +101,7 @@
       </nav>
       <div class="sidebar-bottom">
         <div class="local-status"><span class="status-dot"></span><div><b>Modo local</b><small>Dados deste dispositivo</small></div></div>
-        <div class="sidebar-version">VERSÃO 6 · ACESSO POR PERFIL</div>
+        <div class="sidebar-version">VERSÃO 7 · ACESSO POR PERFIL</div>
       </div>
     </aside>
 
@@ -212,6 +216,7 @@
           <div class="page-heading"><div><p class="eyebrow">COMERCIAL</p><h1>Registrar venda</h1><p class="subtitle">Registre uma venda e atualize o estoque automaticamente.</p></div></div>
           <section class="surface operation-card"><div class="operation-art orange-art">↗</div><h2>Nova venda</h2><p class="operation-intro">Confira o produto, a quantidade e o valor antes de confirmar.</p>
             <form id="formVenda" class="form-stack">
+              <div id="vendaEdicaoAviso" class="sale-edit-banner" hidden><div><b id="vendaEdicaoTitulo">Editando venda</b><p>Ajuste itens, valores ou pagamentos. Ao salvar, o estoque, o total vendido e o lucro são recalculados.</p></div><button type="button" class="button button-light button-small" id="cancelarEdicaoVenda">Cancelar edição</button></div>
               <label class="field">Produto<select id="vendaProduto" required></select></label>
               <div class="form-two"><label class="field">Quantidade vendida<input id="vendaQuantidade" type="number" min="1" step="1" required placeholder="Ex.: 1"></label><label class="field">Valor unitário (R$)<input id="vendaPreco" type="text" inputmode="numeric" autocomplete="off" required placeholder="0,00"></label></div>
               <button class="button button-light full-button" id="adicionarAoCarrinho" type="button">＋ Adicionar produto ao carrinho</button>
@@ -233,7 +238,7 @@
                 <p id="avisoPagamento" class="payment-notice">Informe as formas de pagamento até completar o total da venda.</p>
               </section>
               <label class="field">Observação (opcional)<input id="vendaObs" maxlength="180" placeholder="Observação da venda"></label>
-              <button class="button button-primary full-button" type="submit">Confirmar venda e baixar estoque <span>→</span></button>
+              <button class="button button-primary full-button" type="submit"><b id="confirmarVendaTexto" style="font:inherit">Confirmar venda e baixar estoque</b> <span>→</span></button>
               <div id="reciboAcoes" class="receipt-actions" hidden>
                 <p id="reciboStatus">Venda registrada. Gere o recibo em PDF e envie ao cliente.</p>
                 <button class="button button-light full-button" id="baixarReciboPdf" type="button">⬇ Baixar recibo em PDF</button>
@@ -245,7 +250,20 @@
         </section>
 
         <section class="panel" id="panel-historico">
-          <div class="page-heading"><div><p class="eyebrow">AUDITORIA</p><h1>Movimentações</h1><p class="subtitle">Consulte o histórico de entradas e vendas deste dispositivo.</p></div></div>
+          <div class="page-heading"><div><p class="eyebrow">AUDITORIA</p><h1>Movimentações</h1><p class="subtitle">Busque vendas, edite ou cancele, e consulte o histórico de entradas e vendas deste dispositivo.</p></div></div>
+          <section class="surface list-surface sales-search-surface">
+            <div class="surface-heading"><div><h2>Buscar vendas</h2><p>Pesquise por cliente, CPF, produto ou data. Ao buscar um cliente, aparecem todas as vendas dele.</p></div></div>
+            <div class="sales-search-filters">
+              <label class="field">Cliente, CPF, produto ou data<input id="buscaVenda" type="search" autocomplete="off" placeholder="Ex.: Maria, 123.456.789-00, colchão, 15/10/2026"></label>
+              <label class="field">Data inicial<input type="date" id="buscaVendaInicio"></label>
+              <label class="field">Data final<input type="date" id="buscaVendaFim"></label>
+              <label class="field">Situação<select id="buscaVendaStatus"><option value="todas">Todas</option><option value="ativas">Ativas</option><option value="canceladas">Canceladas</option></select></label>
+              <button class="button button-light" id="limparBuscaVenda" type="button">Limpar</button>
+            </div>
+            <div id="vendasResumo" class="sales-search-summary"></div>
+            <div class="table-wrap"><table><thead><tr><th>DATA / VENDA</th><th>CLIENTE</th><th>PRODUTOS</th><th>TOTAL</th><th>LUCRO</th><th>SITUAÇÃO</th><th>AÇÕES</th></tr></thead><tbody id="listaVendasBusca"></tbody></table></div>
+            <div id="semVendasBusca" class="empty-state"><div class="empty-symbol">⌕</div><b>Nenhuma venda encontrada</b><p>Altere a busca, o período ou a situação.</p></div>
+          </section>
           <section class="surface list-surface">
             <div class="surface-heading responsive-heading"><div><h2>Histórico completo</h2><p>Registros organizados do mais recente para o mais antigo.</p></div><div class="history-controls"><select id="filtroTipo" aria-label="Filtrar por tipo"><option value="todos">Todos os tipos</option><option value="entrada">Entradas</option><option value="venda">Vendas</option></select><button id="limparHistorico" class="button button-danger-light button-small" type="button">Limpar histórico</button></div></div>
             <div class="table-wrap"><table><thead><tr><th>DATA E HORA</th><th>TIPO</th><th>PRODUTO</th><th>QTD.</th><th>VALOR TOTAL</th><th>DETALHES</th></tr></thead><tbody id="listaHistorico"></tbody></table></div>
@@ -291,6 +309,6 @@
   </div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" referrerpolicy="no-referrer"></script>
-  <script src="app.js?v=6"></script>
+  <script src="app.js?v=7"></script>
 </body>
 </html>
