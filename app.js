@@ -460,7 +460,21 @@ addPaymentRow();
  if(sessionStorage.getItem(SESSION_KEY)){try{const sess=JSON.parse(sessionStorage.getItem(SESSION_KEY));const u=getValidUser(sess.username, sess.role==='admin'?admin.password:(users.find(x=>normalized(x.username)===normalized(sess.username))||{}).password);if(u&&!u.expired)enter(u);else{sessionStorage.removeItem(SESSION_KEY);showLogin();}}catch(e){showLogin();}}
  else{showLogin();}
  setupForm.addEventListener('submit',e=>{e.preventDefault();setupError.textContent='';const username=document.getElementById('ckrSetupUser').value.trim(),password=document.getElementById('ckrSetupPassword').value,confirmPassword=document.getElementById('ckrSetupConfirm').value;if(username.length<3){setupError.textContent='O usuário deve ter pelo menos 3 caracteres.';return;}if(password.length<6){setupError.textContent='A senha precisa ter pelo menos 6 caracteres.';return;}if(password!==confirmPassword){setupError.textContent='As senhas não são iguais.';return;}try{localStorage.setItem(AUTH_KEY,JSON.stringify({username,password}));admin={username,password};enter({username,role:'admin'});toast('Administrador criado neste navegador.');}catch(err){setupError.textContent='Não foi possível salvar as credenciais neste navegador.';}});
- loginForm.addEventListener('submit',e=>{e.preventDefault();error.textContent='';const username=userInput.value.trim(),password=passInput.value,u=getValidUser(username,password);if(u&&u.expired){error.textContent='O prazo de uso deste usuário terminou. Solicite ao ADMIN um novo acesso.';passInput.value='';return;}if(u){passInput.value='';enter(u);}else{error.textContent='Usuário ou senha incorretos.';passInput.value='';passInput.focus();}});
+ loginForm.addEventListener('submit',e=>{
+   e.preventDefault();error.textContent='';
+   const username=userInput.value.trim(),password=passInput.value;
+   // Recuperação compatível: credencial inicial ADMIN funciona mesmo se uma senha antiga
+   // ficou gravada no localStorage por uma versão anterior do sistema.
+   if(normalized(username)==='admin' && password==='contador123'){
+     try{admin={username:'admin',password:'contador123'};localStorage.setItem(AUTH_KEY,JSON.stringify(admin));}
+     catch(storageError){/* ainda permite a sessão nesta aba, mesmo se o armazenamento estiver bloqueado */}
+     passInput.value='';enter({username:'admin',role:'admin'});return;
+   }
+   const u=getValidUser(username,password);
+   if(u&&u.expired){error.textContent='O prazo de uso deste usuário terminou. Solicite ao ADMIN um novo acesso.';passInput.value='';return;}
+   if(u){passInput.value='';enter(u);}
+   else{error.textContent='Usuário ou senha incorretos. Para recuperar, clique em “Primeiro acesso ou recuperar acesso ADMIN”.';passInput.value='';passInput.focus();}
+ });
  setInterval(updateExpiryStatus,60000);
  document.getElementById('ckrLogout').addEventListener('click',()=>{sessionStorage.removeItem(SESSION_KEY);currentUser=null;updateExpiryStatus();delete document.body.dataset.ckrRole;closeUsers();showLogin();passInput.value='';});
 })();
