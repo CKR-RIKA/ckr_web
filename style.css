@@ -166,7 +166,3 @@
 .profit-margin b{font-size:13px;color:#159568}
 .profit-note{font-size:9px;line-height:1.45;color:#9aa4b2}
 @media(min-width:1500px){.profit-note{font-size:10px}}
-
-/* Carrinho de venda com múltiplos produtos */
-.cart-box{margin:2px 0 4px;min-width:0}.cart-box .table-wrap{width:100%;overflow-x:auto}.cart-box table{min-width:520px}.cart-box td,.cart-box th{padding:10px 8px}.cart-box td:first-child{font-weight:700;color:#26364e}.cart-box #carrinhoQuantidadeItens{font-size:11px;font-weight:800;color:#3468f5;background:#edf2ff;padding:7px 9px;border-radius:7px;white-space:nowrap}#adicionarAoCarrinho{border:1px dashed #b9c9e7;background:#f7f9ff;color:#355da8;font-weight:800}.cart-box .sale-total{margin-top:12px}
-@media(max-width:600px){.cart-box .payment-heading{align-items:flex-start}.cart-box table{min-width:500px}.cart-box .table-wrap{margin:0 -2px}}
