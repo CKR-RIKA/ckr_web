@@ -170,3 +170,35 @@
 
 /* Carrinho de venda e ações do recibo */
 .cart-box{border:1px solid #e7ebf3;border-radius:12px;padding:14px;background:#fbfcff;margin:2px 0 16px;min-width:0}.cart-count{font-size:10px;font-weight:800;color:#345ee8;background:#eaf0ff;padding:6px 9px;border-radius:20px;white-space:nowrap}.cart-table{min-width:520px}.cart-table th,.cart-table td{padding:9px 8px}.cart-empty{text-align:center!important;color:#9aa4b2!important;padding:18px!important}.cart-remove{border:0;border-radius:7px;width:27px;height:27px;background:#fff0f0;color:#ce5158;font-size:19px;cursor:pointer}.receipt-actions{border:1px solid #cfe9dc;background:#f4fbf7;border-radius:12px;padding:15px;margin-top:14px;display:grid;gap:9px}.receipt-actions[hidden]{display:none}.receipt-actions p{margin:0;color:#245c42;font-weight:700;font-size:12px}.receipt-actions small{font-size:10px;line-height:1.5;color:#65738a}.cart-box .payment-heading{margin-bottom:12px}
+
+/* ===== Responsividade universal (celular, tablet, notebook, monitores grandes e ultrawide) ===== */
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%;overflow-x:hidden}
+body{overflow-x:hidden;min-height:100dvh}
+img,svg,canvas,video{max-width:100%}
+.main,.content,.panel,.surface,.field,.form-grid>*,.form-two>*,.stat-card{min-width:0}
+input,select,textarea,button{max-width:100%;font-size:16px} /* 16px evita zoom automático no iPhone */
+.field input,.field select,.field textarea{width:100%;min-height:44px}
+input[inputmode="numeric"]{font-variant-numeric:tabular-nums}
+/* tabelas largas rolam dentro do próprio bloco, nunca a página inteira */
+.table-wrap,.table-scroll,.list-surface,.recent-surface{overflow-x:auto;-webkit-overflow-scrolling:touch}
+table{max-width:100%}
+/* área segura de celulares com notch */
+.topbar{padding-left:max(15px,env(safe-area-inset-left));padding-right:max(15px,env(safe-area-inset-right))}
+.sidebar{padding-bottom:max(17px,env(safe-area-inset-bottom));overflow-y:auto}
+/* conteúdo fluido: acompanha a largura da tela */
+.content{width:100%;max-width:min(1500px,100%)}
+.stats-grid{grid-template-columns:repeat(auto-fit,minmax(min(100%,210px),1fr))}
+.form-grid{grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr))}
+.form-grid .field-wide{grid-column:1/-1}
+/* notebooks e tablets */
+@media(min-width:761px) and (max-width:1150px){.content{padding:24px 20px}}
+/* monitores Full HD / 2K: usa mais espaço e escala o tamanho */
+@media(min-width:1700px){html{font-size:17px}.content{max-width:min(1800px,100%);padding-left:48px;padding-right:48px}.sidebar{width:272px}.main{margin-left:272px}}
+/* monitores 2K/4K e ultrawide */
+@media(min-width:2200px){html{font-size:19px}.content{max-width:min(2200px,100%)}.sidebar{width:300px}.main{margin-left:300px}}
+@media(min-width:3000px){html{font-size:24px}.content{max-width:min(2800px,100%)}.sidebar{width:340px}.main{margin-left:340px}}
+/* celulares pequenos */
+@media(max-width:760px){.main{margin-left:0!important}.content{padding:18px 12px}.button{min-height:42px}}
+@media(max-width:380px){.content{padding:14px 10px}.stats-grid{grid-template-columns:1fr 1fr}}
+/* celular deitado (altura curta) */
+@media(max-height:480px) and (orientation:landscape){.topbar{height:52px}.auth-gate,.users-modal{align-items:flex-start}}
