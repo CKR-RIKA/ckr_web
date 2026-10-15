@@ -3,6 +3,8 @@ const STORAGE_KEY = 'ckr_estoque_web_v2';
 let data = loadData();
 let editingId = null;
 let toastTimer;
+let saleCart = [];
+let lastReceipt = null;
 
 function emptyData(){return {version:3,products:[],movements:[],customers:[]};}
 function loadData(){try{const raw=localStorage.getItem(STORAGE_KEY);if(!raw)return emptyData();const parsed=JSON.parse(raw);if(!Array.isArray(parsed.products)||!Array.isArray(parsed.movements))return emptyData();if(!Array.isArray(parsed.customers))parsed.customers=[];return parsed;}catch(e){return emptyData();}}
@@ -174,15 +176,34 @@ document.getElementById('listaProdutos').addEventListener('click',e=>{
 });
 document.getElementById('buscaProduto').addEventListener('input',renderProducts);
 document.getElementById('formEntrada').addEventListener('submit',e=>{e.preventDefault();const p=productById(document.getElementById('entradaProduto').value),qty=Number(document.getElementById('entradaQuantidade').value),note=document.getElementById('entradaObs').value.trim();if(!p){toast('Cadastre e selecione um produto primeiro.',true);return;}if(!Number.isInteger(qty)||qty<1){toast('Informe uma quantidade inteira maior que zero.',true);return;}p.stock+=qty;recordMovement('entrada',p,qty,p.cost*qty,note);if(saveData()){e.target.reset();toast('Entrada registrada com sucesso.');}});
+function cartSubtotal(){return Math.round(saleCart.reduce((sum,item)=>sum+item.quantity*item.price,0)*100)/100;}
 function saleTotals(){
- const qty=Number(document.getElementById('vendaQuantidade').value||0),price=Number(document.getElementById('vendaPreco').value||0);
- const subtotal=Math.round(qty*price*100)/100;
+ const subtotal=saleCart.length?cartSubtotal():Math.round(Number(document.getElementById('vendaQuantidade').value||0)*Number(document.getElementById('vendaPreco').value||0)*100)/100;
  const discountCash=Math.min(subtotal,Math.max(0,Number(document.getElementById('vendaDescontoReais').value||0)));
  const afterCash=Math.max(0,subtotal-discountCash);
  const discountPercent=Math.min(100,Math.max(0,Number(document.getElementById('vendaDescontoPercentual').value||0)));
  const total=Math.round(afterCash*(1-discountPercent/100)*100)/100;
  return {subtotal,discountCash,discountPercent,total};
 }
+function renderCart(){
+ const body=document.getElementById('carrinhoLinhas');
+ document.getElementById('carrinhoQuantidade').textContent=`${saleCart.reduce((n,x)=>n+x.quantity,0)} item(ns)`;
+ if(!saleCart.length){body.innerHTML='<tr><td colspan="5" class="cart-empty">O carrinho está vazio.</td></tr>';}
+ else body.innerHTML=saleCart.map((item,i)=>`<tr><td>${esc(item.name)}</td><td>${item.quantity}</td><td>${money(item.price)}</td><td>${money(item.quantity*item.price)}</td><td><button type="button" class="cart-remove" data-cart-remove="${i}" aria-label="Remover ${esc(item.name)}">×</button></td></tr>`).join('');
+ document.getElementById('subtotalVendaPreview').textContent=money(saleTotals().subtotal);
+ document.getElementById('totalVendaPreview').textContent=money(saleTotals().total);
+ updatePaymentSummary();
+}
+document.getElementById('carrinhoLinhas').addEventListener('click',e=>{const b=e.target.closest('[data-cart-remove]');if(!b)return;saleCart.splice(Number(b.dataset.cartRemove),1);renderCart();});
+document.getElementById('adicionarAoCarrinho').addEventListener('click',()=>{
+ const p=productById(document.getElementById('vendaProduto').value),qty=Number(document.getElementById('vendaQuantidade').value),price=Number(document.getElementById('vendaPreco').value);
+ if(!p){toast('Selecione um produto.',true);return;}if(!Number.isInteger(qty)||qty<1){toast('Informe uma quantidade inteira maior que zero.',true);return;}if(!Number.isFinite(price)||price<0){toast('Informe um preço válido.',true);return;}
+ const already=saleCart.filter(x=>x.productId===p.id).reduce((n,x)=>n+x.quantity,0);
+ if(already+qty>Number(p.stock)){toast(`Estoque insuficiente para ${p.name}. Disponível: ${p.stock}.`,true);return;}
+ const existing=saleCart.find(x=>x.productId===p.id&&x.price===Math.round(price*100)/100);
+ if(existing)existing.quantity+=qty;else saleCart.push({productId:p.id,name:p.name,quantity:qty,price:Math.round(price*100)/100,cost:Number(p.cost||0)});
+ document.getElementById('vendaQuantidade').value='1';renderCart();toast(`${p.name} adicionado ao carrinho.`);
+});
 function updatePaymentRow(row){
  const isCard=row.querySelector('.pagamentoMetodo').value==='Cartão de crédito';
  row.querySelector('.payment-card-options').hidden=!isCard;
@@ -209,20 +230,42 @@ function updateSalePreview(){
 }
 ['vendaProduto','vendaQuantidade','vendaPreco','vendaDescontoReais','vendaDescontoPercentual'].forEach(key=>document.getElementById(key).addEventListener(key==='vendaProduto'?'change':'input',updateSalePreview));
 document.getElementById('adicionarPagamento').addEventListener('click',addPaymentRow);
+function createReceiptPdf(receipt){
+ if(!window.jspdf||!window.jspdf.jsPDF){toast('A biblioteca de PDF não carregou. Verifique a internet e tente novamente.',true);return false;}
+ const {jsPDF}=window.jspdf;const doc=new jsPDF({unit:'mm',format:'a4'});let y=18;
+ doc.setFont('helvetica','bold');doc.setFontSize(18);doc.text('CONCEITO - RECIBO DE VENDA',15,y);y+=10;
+ doc.setFont('helvetica','normal');doc.setFontSize(10);doc.text(`Data: ${new Date(receipt.date).toLocaleString('pt-BR')}`,15,y);y+=6;doc.text(`Cliente: ${receipt.client||'Não informado'}`,15,y);y+=9;
+ doc.setFont('helvetica','bold');doc.text('PRODUTO',15,y);doc.text('QTD.',108,y);doc.text('VALOR UNIT.',126,y);doc.text('VALOR TOTAL',166,y);y+=3;doc.line(15,y,195,y);y+=6;doc.setFont('helvetica','normal');
+ receipt.items.forEach(item=>{const name=doc.splitTextToSize(item.name,88);if(y+Math.max(7,name.length*5)>265){doc.addPage();y=18;}doc.text(name,15,y);doc.text(String(item.quantity),108,y);doc.text(money(item.price),126,y);doc.text(money(item.lineTotal),166,y);y+=Math.max(7,name.length*5);});
+ y+=2;doc.line(15,y,195,y);y+=8;if(receipt.discount>0){doc.text('Subtotal:',135,y);doc.text(money(receipt.subtotal),195,y,{align:'right'});y+=6;doc.text('Desconto:',135,y);doc.text('- '+money(receipt.discount),195,y,{align:'right'});y+=7;}
+ doc.setFont('helvetica','bold');doc.setFontSize(13);doc.text('TOTAL GERAL:',125,y);doc.text(money(receipt.total),195,y,{align:'right'});y+=11;
+ doc.setFont('helvetica','normal');doc.setFontSize(10);if(y>265){doc.addPage();y=18;}doc.text('Observação: garantia de 3 meses (90 dias).',15,y);y+=7;if(receipt.note){const lines=doc.splitTextToSize(`Obs. do pedido: ${receipt.note}`,175);doc.text(lines,15,y);}
+ doc.save(`recibo-conceito-${receipt.id}.pdf`);return true;
+}
+function receiptWhatsappText(receipt){
+ const lines=[`Olá${receipt.client?' '+receipt.client:''}! Segue o resumo da sua compra na Conceito.`,`Data: ${new Date(receipt.date).toLocaleString('pt-BR')}`,...receipt.items.map(x=>`${x.name} | Qtd.: ${x.quantity} | Unit.: ${money(x.price)} | Total: ${money(x.lineTotal)}`)];
+ if(receipt.discount>0){lines.push(`Subtotal: ${money(receipt.subtotal)}`,`Desconto: ${money(receipt.discount)}`);}
+ lines.push(`TOTAL GERAL: ${money(receipt.total)}`,'Garantia: 3 meses (90 dias).');if(receipt.note)lines.push(`Observação: ${receipt.note}`);lines.push('O recibo em PDF será anexado nesta conversa.');return lines.join('\n');
+}
+document.getElementById('baixarReciboPdf').addEventListener('click',()=>{if(lastReceipt)createReceiptPdf(lastReceipt);});
+document.getElementById('enviarReciboWhatsapp').addEventListener('click',()=>{if(!lastReceipt)return;const phone=prompt('Digite o WhatsApp do cliente com DDD (somente números), ou deixe vazio para escolher uma conversa:','');if(phone===null)return;const number=phone.replace(/\D/g,'');if(number&&number.length<10){toast('Informe um número com DDD válido.',true);return;}const url=`https://wa.me/${number}?text=${encodeURIComponent(receiptWhatsappText(lastReceipt))}`;window.open(url,'_blank','noopener');toast('WhatsApp aberto. Anexe o PDF baixado para enviar o recibo completo.');});
 document.getElementById('formVenda').addEventListener('submit',e=>{
- e.preventDefault();const p=productById(document.getElementById('vendaProduto').value),qty=Number(document.getElementById('vendaQuantidade').value),price=Number(document.getElementById('vendaPreco').value),client=document.getElementById('vendaCliente').value.trim(),note=document.getElementById('vendaObs').value.trim(),totals=saleTotals(),payments=readPayments(),received=Math.round(payments.reduce((s,x)=>s+x.amount,0)*100)/100;
- if(!p){toast('Cadastre e selecione um produto primeiro.',true);return;}if(!Number.isInteger(qty)||qty<1){toast('Informe uma quantidade inteira maior que zero.',true);return;}if(qty>p.stock){toast(`Estoque insuficiente. Disponível: ${p.stock}.`,true);return;}if(!Number.isFinite(price)||price<0){toast('Informe um preço válido.',true);return;}
- if(totals.discountCash<0||totals.discountPercent<0||totals.discountPercent>100){toast('Confira os descontos informados.',true);return;}
+ e.preventDefault();if(!saleCart.length){toast('Adicione pelo menos um produto ao carrinho antes de confirmar.',true);return;}
+ const client=document.getElementById('vendaCliente').value.trim(),note=document.getElementById('vendaObs').value.trim(),totals=saleTotals(),payments=readPayments(),received=Math.round(payments.reduce((s,x)=>s+x.amount,0)*100)/100;
+ for(const item of saleCart){const p=productById(item.productId);if(!p||item.quantity>p.stock){toast(`Estoque insuficiente ou produto removido: ${item.name}.`,true);return;}}
  if(!payments.length||payments.some(x=>!x.method||x.amount<=0)){toast('Informe a forma e o valor de cada pagamento.',true);return;}
  if(payments.some(x=>x.method==='Cartão de crédito'&&(!Number.isInteger(x.installments)||x.installments<1))){toast('Informe um número válido de parcelas para cada cartão.',true);return;}
  if(Math.abs(received-totals.total)>0.009){toast(`Os pagamentos devem somar exatamente ${money(totals.total)}. Saldo: ${money(totals.total-received)}.`,true);return;}
  const paymentDetails=payments.map(x=>x.method==='Cartão de crédito'?`${x.method}: ${money(x.amount)} em ${x.installments}x (${x.responsible==='fabrica'?'fábrica':'loja'})`:`${x.method}: ${money(x.amount)}`).join(' | ');
- const details=[client?`Cliente: ${client}`:'',`Subtotal: ${money(totals.subtotal)}`,totals.discountCash?`Desconto: ${money(totals.discountCash)} + ${totals.discountPercent}%`:'',`Pagamentos: ${paymentDetails}`,note].filter(Boolean).join(' · ');
- const custoUnitarioVenda=Math.round(Number(p.cost||0)*100)/100;
- const custoTotalVenda=Math.round(custoUnitarioVenda*qty*100)/100;
- const lucroVenda=Math.round((Number(totals.total||0)-custoTotalVenda)*100)/100;
- p.stock-=qty;recordMovement('venda',p,qty,totals.total,details,{client,payments,subtotal:totals.subtotal,discountCash:totals.discountCash,discountPercent:totals.discountPercent,unitPrice:price,unitCost:custoUnitarioVenda,costTotal:custoTotalVenda,profit:lucroVenda});
- if(saveData()){e.target.reset();document.getElementById('linhasPagamento').innerHTML='';addPaymentRow();updateSalePreview();toast('Venda registrada e estoque atualizado.');}
+ const discount= Math.round((totals.subtotal-totals.total)*100)/100;let allocated=0;
+ const receiptItems=saleCart.map((item,index)=>{const raw=Math.round(item.quantity*item.price*100)/100;let lineTotal;if(index===saleCart.length-1)lineTotal=Math.round((totals.total-allocated)*100)/100;else{lineTotal=totals.subtotal?Math.round(raw*(totals.total/totals.subtotal)*100)/100:0;allocated+=lineTotal;}return {...item,lineTotal};});
+ const saleId=Date.now().toString(36).toUpperCase();const date=new Date().toISOString();
+ const detailPrefix=[client?`Cliente: ${client}`:'',`Venda ${saleId}`,`Subtotal: ${money(totals.subtotal)}`,discount?`Desconto total: ${money(discount)}`:'',`Pagamentos: ${paymentDetails}`,note].filter(Boolean).join(' · ');
+ const snapshot={id:saleId,date,client,note,items:receiptItems,subtotal:totals.subtotal,discount,total:totals.total};
+ saleCart.forEach((item,index)=>{const p=productById(item.productId);const costTotal=Math.round(Number(p.cost||0)*item.quantity*100)/100;p.stock-=item.quantity;const detail=[detailPrefix,`Item ${index+1}/${saleCart.length}`].filter(Boolean).join(' · ');recordMovement('venda',p,item.quantity,receiptItems[index].lineTotal,detail,{client,payments,subtotal:totals.subtotal,discountCash:totals.discountCash,discountPercent:totals.discountPercent,unitPrice:item.price,unitCost:Number(p.cost||0),costTotal,profit:Math.round((receiptItems[index].lineTotal-costTotal)*100)/100,saleId});});
+ if(saveData()){
+  lastReceipt=snapshot;saleCart=[];e.target.reset();document.getElementById('linhasPagamento').innerHTML='';addPaymentRow();document.getElementById('reciboAcoes').hidden=false;document.getElementById('reciboStatus').textContent=`Venda ${saleId} registrada. Baixe o PDF e envie ao cliente.`;renderCart();updateSalePreview();toast('Venda registrada, estoque atualizado e recibo disponível.');
+ }
 });
 document.getElementById('filtroTipo').addEventListener('change',renderHistory);
 document.getElementById('limparHistorico').addEventListener('click',()=>{if(!confirm('Apagar o histórico? Os produtos e quantidades em estoque serão mantidos.'))return;data.movements=[];if(saveData())toast('Histórico apagado.');});
