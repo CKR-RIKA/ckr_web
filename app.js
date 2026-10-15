@@ -3,7 +3,6 @@ const STORAGE_KEY = 'ckr_estoque_web_v2';
 let data = loadData();
 let editingId = null;
 let toastTimer;
-let saleCart = [];
 
 function emptyData(){return {version:3,products:[],movements:[],customers:[]};}
 function loadData(){try{const raw=localStorage.getItem(STORAGE_KEY);if(!raw)return emptyData();const parsed=JSON.parse(raw);if(!Array.isArray(parsed.products)||!Array.isArray(parsed.movements))return emptyData();if(!Array.isArray(parsed.customers))parsed.customers=[];return parsed;}catch(e){return emptyData();}}
@@ -13,37 +12,23 @@ function money(n){return Number(n||0).toLocaleString('pt-BR',{style:'currency',c
 function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function toast(message,error=false){const el=document.getElementById('toast');el.textContent=message;el.classList.toggle('error',error);el.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove('show'),3200);}
 function productById(pid){return data.products.find(p=>p.id===pid);}
-function recordMovement(type,p,qty,total,details='',extra={}){const movement={id:id(),type,productId:p.id,productName:p.name,quantity:Number(qty),total:Number(total||0),details,...extra,date:new Date().toISOString()};data.movements.unshift(movement);return movement;}
+function recordMovement(type,p,qty,total,details='',extra={}){data.movements.unshift({id:id(),type,productId:p.id,productName:p.name,quantity:Number(qty),total:Number(total||0),details,...extra,date:new Date().toISOString()});}
 function dateText(d){return new Date(d).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'});}
-function goTo(name){if(name==='backup'&&document.body.dataset.ckrRole!=='admin'){toast('Somente o ADMIN pode acessar Backup e transferência.',true);return;}document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active',p.id===`panel-${name}`));document.querySelectorAll('.nav-link').forEach(b=>b.classList.toggle('active',b.dataset.panel===name));const selected=document.querySelector(`.nav-link[data-panel="${name}"]`);document.getElementById('pageBreadcrumb').textContent=selected?selected.textContent.trim().replace(/\d+$/,'').trim():'Visão geral';document.getElementById('sidebar').classList.remove('open');window.scrollTo({top:0,behavior:'smooth'});}
+function goTo(name){document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active',p.id===`panel-${name}`));document.querySelectorAll('.nav-link').forEach(b=>b.classList.toggle('active',b.dataset.panel===name));const selected=document.querySelector(`.nav-link[data-panel="${name}"]`);document.getElementById('pageBreadcrumb').textContent=selected?selected.textContent.trim().replace(/\d+$/,'').trim():'Visão geral';document.getElementById('sidebar').classList.remove('open');window.scrollTo({top:0,behavior:'smooth'});}
 document.querySelectorAll('[data-panel]').forEach(b=>b.addEventListener('click',()=>goTo(b.dataset.panel)));
 document.querySelectorAll('[data-go]').forEach(b=>b.addEventListener('click',()=>goTo(b.dataset.go)));
 document.getElementById('mobileMenu').addEventListener('click',()=>document.getElementById('sidebar').classList.toggle('open'));
 document.getElementById('closeNotice').addEventListener('click',()=>document.querySelector('.notice').style.display='none');
 document.getElementById('todayLabel').textContent=new Date().toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'short',year:'numeric'});
 
-function renderAll(){renderStats();renderProducts();renderSelects();renderHistory();renderRecent();renderCustomers();renderDashboardInsights();renderDateReport();}
+function renderAll(){renderStats();renderProducts();renderSelects();renderHistory();renderRecent();renderCustomers();}
 function renderStats(){
  document.getElementById('totalProdutos').textContent=data.products.length;
  document.getElementById('menuProdutos').textContent=data.products.length;
   document.getElementById('menuClientes').textContent=(data.customers||[]).length;
  document.getElementById('totalUnidades').textContent=data.products.reduce((s,p)=>s+Number(p.stock||0),0);
- document.getElementById('totalVendas').textContent=new Set(data.movements.filter(m=>m.type==='venda').map(m=>m.saleId||m.id)).size;
+ document.getElementById('totalVendas').textContent=data.movements.filter(m=>m.type==='venda').length;
  document.getElementById('valorEstoque').textContent=money(data.products.reduce((s,p)=>s+Number(p.stock||0)*Number(p.cost||0),0));
- // O lucro só usa vendas que guardam o custo real da época da venda.
- // Vendas antigas sem esse registro não podem ser recalculadas com segurança.
- const vendas=data.movements.filter(m=>m.type==='venda');
- const vendasComCusto=vendas.filter(m=>m.costTotal!==undefined && Number.isFinite(Number(m.costTotal)));
- const receitaHistorica=vendasComCusto.reduce((s,m)=>s+Number(m.total||0),0);
- const custoHistorico=vendasComCusto.reduce((s,m)=>s+Number(m.costTotal||0),0);
- const lucro=Math.round((receitaHistorica-custoHistorico)*100)/100;
- const margem=receitaHistorica>0?(lucro/receitaHistorica)*100:0;
- const lucroEl=document.getElementById('lucroTotal');
- const margemEl=document.getElementById('margemLucro');
- const notaEl=document.getElementById('lucroHistoricoNota');
- if(lucroEl)lucroEl.textContent=money(lucro);
- if(margemEl)margemEl.textContent=`${margem.toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1})}%`;
- if(notaEl){const antigas=vendas.length-vendasComCusto.length;notaEl.textContent=antigas>0?`${antigas} venda(s) antiga(s) sem custo histórico não incluída(s)`:'Calculado pelo custo registrado em cada venda';}
 }
 function renderProducts(){
  const q=document.getElementById('buscaProduto').value.trim().toLowerCase();
@@ -67,39 +52,6 @@ function renderRecent(){
  const list=data.movements.slice(0,5);
  document.getElementById('recentRows').innerHTML=list.map(m=>`<tr><td><span class="pill ${m.type}">${m.type==='venda'?'Venda':'Entrada'}</span></td><td><span class="product-name">${esc(m.productName)}</span></td><td>${m.type==='venda'?'−':'+'}${Number(m.quantity)}</td><td>${money(m.total)}</td><td>${esc(dateText(m.date))}</td></tr>`).join('');
  document.getElementById('recentEmpty').style.display=list.length?'none':'block';
-}
-
-function localDateKey(value){const d=new Date(value);if(Number.isNaN(d.getTime()))return '';return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
-function renderDashboardInsights(){
- const now=new Date(),days=[];
- for(let i=6;i>=0;i--){const d=new Date(now);d.setHours(0,0,0,0);d.setDate(d.getDate()-i);const key=localDateKey(d);const total=data.movements.filter(m=>m.type==='venda'&&localDateKey(m.date)===key).reduce((s,m)=>s+Number(m.total||0),0);days.push({key,label:d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}),total});}
- const max=Math.max(1,...days.map(x=>x.total)),w=700,h=250,left=58,right=18,top=22,bottom=42,plotW=w-left-right,plotH=h-top-bottom;
- const x=i=>left+(days.length===1?plotW/2:i*plotW/(days.length-1));
- const y=v=>top+plotH-(v/max)*plotH;
- const grid=[0,.25,.5,.75,1].map(fr=>{const val=max*fr,yy=top+plotH-plotH*fr;return `<line x1="${left}" y1="${yy}" x2="${w-right}" y2="${yy}" stroke="#e8edf5" stroke-width="1"/><text x="${left-10}" y="${yy+4}" text-anchor="end" fill="#8290a5" font-size="11">${fr===0?'R$ 0':esc(shortMoney(val))}</text>`}).join('');
- const points=days.map((d,i)=>`${x(i)},${y(d.total)}`).join(' ');
- const area=`${x(0)},${top+plotH} ${points} ${x(days.length-1)},${top+plotH}`;
- const marks=days.map((d,i)=>`<circle cx="${x(i)}" cy="${y(d.total)}" r="5" fill="#fff" stroke="#3568f5" stroke-width="3"><title>${d.label}: ${esc(money(d.total))}</title></circle><text x="${x(i)}" y="${h-15}" text-anchor="middle" fill="#74839a" font-size="11">${d.label}</text>`).join('');
- document.getElementById('dashboardSalesChart').innerHTML=`<svg class="sales-line-svg" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-label="Vendas por dia">${grid}<polygon points="${area}" fill="#3568f5" opacity=".09"/><polyline points="${points}" fill="none" stroke="#3568f5" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>${marks}</svg>`;
- document.getElementById('dashboardVendasTotal').textContent=money(days.reduce((s,d)=>s+d.total,0));
- const zero=data.products.filter(p=>Number(p.stock)<=0).length,low=data.products.filter(p=>Number(p.stock)>0&&Number(p.stock)<=2).length,ok=data.products.filter(p=>Number(p.stock)>2).length,total=data.products.length;
- document.getElementById('estoqueZerado').textContent=zero;document.getElementById('estoqueBaixo').textContent=low;document.getElementById('estoqueEmDia').textContent=ok;
- document.getElementById('stockDonutTotal').textContent=total;
- const okPct=total?ok/total*100:0,lowPct=total?low/total*100:0,zeroPct=total?zero/total*100:0;
- document.getElementById('stockDonut').style.background=total?`conic-gradient(#16a36a 0 ${okPct}%, #f59e0b ${okPct}% ${okPct+lowPct}%, #ef4444 ${okPct+lowPct}% 100%)`:'#e8edf5';
-}
-function shortMoney(n){const v=Number(n||0);if(v>=1000000)return `R$ ${(v/1000000).toLocaleString('pt-BR',{maximumFractionDigits:1})} mi`;if(v>=1000)return `R$ ${(v/1000).toLocaleString('pt-BR',{maximumFractionDigits:1})} mil`;return `R$ ${Math.round(v).toLocaleString('pt-BR')}`;}
-
-function getDateReportRows(){
- const start=document.getElementById('relatorioDataInicio').value,end=document.getElementById('relatorioDataFim').value,type=document.getElementById('relatorioTipo').value;
- return data.movements.filter(m=>{const day=localDateKey(m.date);return (!start||day>=start)&&(!end||day<=end)&&(type==='todos'||m.type===type);}).sort((a,b)=>new Date(b.date)-new Date(a.date));
-}
-function renderDateReport(){
- const rows=getDateReportRows(),sales=rows.filter(m=>m.type==='venda').reduce((s,m)=>s+Number(m.total||0),0),entries=rows.filter(m=>m.type==='entrada').reduce((s,m)=>s+Number(m.total||0),0);
- const el=id=>document.getElementById(id);if(!el('relatorioRows'))return;
- el('relatorioTotalVendas').textContent=money(sales);el('relatorioTotalEntradas').textContent=money(entries);el('relatorioQtd').textContent=rows.length;
- const start=el('relatorioDataInicio').value,end=el('relatorioDataFim').value;el('relatorioDescricao').textContent=`${start?new Date(start+'T12:00:00').toLocaleDateString('pt-BR'):'Desde o início'} até ${end?new Date(end+'T12:00:00').toLocaleDateString('pt-BR'):'hoje'} · ${rows.length} registro(s)`;
- el('relatorioRows').innerHTML=rows.map(m=>`<tr><td>${esc(dateText(m.date))}</td><td><span class="pill ${m.type}">${m.type==='venda'?'Venda':'Entrada'}</span></td><td><span class="product-name">${esc(m.productName)}</span></td><td>${Number(m.quantity)}</td><td>${money(m.total)}</td><td>${esc([m.client?`Cliente: ${m.client}`:'',m.details||''].filter(Boolean).join(' · ')||'—')}</td></tr>`).join('');el('relatorioVazio').style.display=rows.length?'none':'block';
 }
 
 let editingCustomerId = null;
@@ -175,38 +127,15 @@ document.getElementById('listaProdutos').addEventListener('click',e=>{
 });
 document.getElementById('buscaProduto').addEventListener('input',renderProducts);
 document.getElementById('formEntrada').addEventListener('submit',e=>{e.preventDefault();const p=productById(document.getElementById('entradaProduto').value),qty=Number(document.getElementById('entradaQuantidade').value),note=document.getElementById('entradaObs').value.trim();if(!p){toast('Cadastre e selecione um produto primeiro.',true);return;}if(!Number.isInteger(qty)||qty<1){toast('Informe uma quantidade inteira maior que zero.',true);return;}p.stock+=qty;recordMovement('entrada',p,qty,p.cost*qty,note);if(saveData()){e.target.reset();toast('Entrada registrada com sucesso.');}});
-function printSaleReceipt(m){
- const items=Array.isArray(m.items)&&m.items.length?m.items:[{productName:m.productName||'Produto',quantity:m.quantity||0,unitPrice:m.unitPrice||0,subtotal:m.subtotal||Number(m.unitPrice||0)*Number(m.quantity||0)}];
- const date=new Date(m.date).toLocaleString('pt-BR'),subtotal=Number(m.subtotal||items.reduce((s,x)=>s+Number(x.subtotal||0),0));
- const cash=Number(m.discountCash||0),pct=Number(m.discountPercent||0),percentValue=Math.round(Math.max(0,subtotal-cash)*pct)/100,discount=cash+percentValue,total=Number(m.total||0);
- const popup=window.open('','_blank','width=800,height=900');if(!popup){toast('Permita pop-ups para gerar o recibo e imprimir em PDF.',true);return;}
- const rows=items.map(x=>`<tr><td>${esc(x.productName)}</td><td>${Number(x.quantity||0)}</td><td>${money(x.unitPrice||0)}</td><td>${money(x.subtotal||Number(x.unitPrice||0)*Number(x.quantity||0))}</td></tr>`).join('');
- popup.document.write(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Recibo de venda CKR</title><style>body{font:14px Arial,sans-serif;color:#111;max-width:760px;margin:25px auto;padding:24px}h1{text-align:center;font-size:22px;margin:0 0 4px}.sub{text-align:center;color:#555;margin-bottom:24px}.line{display:flex;justify-content:space-between;gap:18px;margin:9px 0}table{width:100%;border-collapse:collapse;margin:20px 0}th,td{border-bottom:1px solid #ddd;padding:10px 6px;text-align:left}th:last-child,td:last-child{text-align:right}.total{font-size:18px;font-weight:bold;border-top:2px solid #222;padding-top:12px}.obs{margin-top:18px;white-space:pre-wrap}.warranty{text-align:center;border:1px solid #bbb;padding:12px;margin-top:25px;font-weight:bold}.actions{text-align:center;margin:0 0 20px}.actions button{padding:10px 18px;cursor:pointer}@media print{.actions{display:none}body{margin:0;padding:10mm}}</style></head><body><div class="actions"><button onclick="window.print()">Imprimir / Salvar em PDF</button></div><h1>CKR COLCHÕES</h1><div class="sub">RECIBO DE VENDA</div><div class="line"><span><b>Cliente:</b> ${esc(m.client||'Não informado')}</span><span><b>Data:</b> ${esc(date)}</span></div><div class="line"><span><b>Recibo:</b> ${esc(String(m.saleId||m.id||'').slice(0,12))}</span></div><table><thead><tr><th>Produto</th><th>Quantidade</th><th>Valor unitário</th><th>Subtotal</th></tr></thead><tbody>${rows}</tbody></table><div class="line"><span>Subtotal dos produtos</span><b>${money(subtotal)}</b></div><div class="line"><span>Desconto em reais</span><span>${money(cash)}</span></div><div class="line"><span>Desconto percentual (${pct.toLocaleString('pt-BR')}%)</span><span>${money(percentValue)}</span></div><div class="line"><span>Desconto total</span><span>${money(discount)}</span></div><div class="line total"><span>TOTAL DA VENDA</span><span>${money(total)}</span></div>${m.paymentDetails?`<p><b>Pagamento:</b> ${esc(m.paymentDetails)}</p>`:''}<div class="obs"><b>Observações:</b> ${esc(m.note||'—')}</div><div class="warranty">Garantia: 3 meses (90 dias).</div><p style="text-align:center;margin-top:30px;color:#555">Obrigado pela preferência!</p><script>setTimeout(()=>window.print(),350)<\/script></body></html>`);popup.document.close();
-}
-function cartSubtotal(){return Math.round(saleCart.reduce((s,x)=>s+x.quantity*x.unitPrice,0)*100)/100;}
 function saleTotals(){
- const subtotal=saleCart.length?cartSubtotal():0;
+ const qty=Number(document.getElementById('vendaQuantidade').value||0),price=Number(document.getElementById('vendaPreco').value||0);
+ const subtotal=Math.round(qty*price*100)/100;
  const discountCash=Math.min(subtotal,Math.max(0,Number(document.getElementById('vendaDescontoReais').value||0)));
- const afterCash=Math.max(0,subtotal-discountCash),discountPercent=Math.min(100,Math.max(0,Number(document.getElementById('vendaDescontoPercentual').value||0)));
+ const afterCash=Math.max(0,subtotal-discountCash);
+ const discountPercent=Math.min(100,Math.max(0,Number(document.getElementById('vendaDescontoPercentual').value||0)));
  const total=Math.round(afterCash*(1-discountPercent/100)*100)/100;
  return {subtotal,discountCash,discountPercent,total};
 }
-function renderCart(){
- const body=document.getElementById('carrinhoLinhas');
- if(!saleCart.length)body.innerHTML='<tr><td colspan="5">Carrinho vazio. Adicione um produto acima.</td></tr>';
- else body.innerHTML=saleCart.map((x,i)=>`<tr><td>${esc(x.productName)}</td><td>${x.quantity}</td><td>${money(x.unitPrice)}</td><td>${money(x.quantity*x.unitPrice)}</td><td><button type="button" class="row-action delete" data-cart-remove="${i}" aria-label="Remover ${esc(x.productName)}">Remover</button></td></tr>`).join('');
- document.getElementById('carrinhoQuantidadeItens').textContent=`${saleCart.length} ${saleCart.length===1?'produto':'produtos'}`;
- document.getElementById('subtotalCarrinho').textContent=money(cartSubtotal());
-}
-document.getElementById('carrinhoLinhas').addEventListener('click',e=>{const b=e.target.closest('[data-cart-remove]');if(!b)return;saleCart.splice(Number(b.dataset.cartRemove),1);renderCart();updateSalePreview();});
-document.getElementById('adicionarAoCarrinho').addEventListener('click',()=>{
- const p=productById(document.getElementById('vendaProduto').value),qty=Number(document.getElementById('vendaQuantidade').value),price=Number(document.getElementById('vendaPreco').value);
- if(!p){toast('Selecione um produto.',true);return;}if(!Number.isInteger(qty)||qty<1){toast('Informe uma quantidade inteira maior que zero.',true);return;}if(!Number.isFinite(price)||price<0){toast('Informe um preço válido.',true);return;}
- const existing=saleCart.find(x=>x.productId===p.id);const totalQty=qty+(existing?existing.quantity:0);
- if(totalQty>Number(p.stock)){toast(`Estoque insuficiente para ${p.name}. Disponível: ${p.stock}.`,true);return;}
- if(existing){existing.quantity+=qty;existing.unitPrice=price;}else saleCart.push({productId:p.id,productName:p.name,quantity:qty,unitPrice:price,unitCost:Number(p.cost||0)});
- renderCart();updateSalePreview();toast(`${p.name} adicionado ao carrinho.`);
-});
 function updatePaymentRow(row){
  const isCard=row.querySelector('.pagamentoMetodo').value==='Cartão de crédito';
  row.querySelector('.payment-card-options').hidden=!isCard;
@@ -229,249 +158,26 @@ function updatePaymentSummary(){
 }
 function updateSalePreview(){
  const p=productById(document.getElementById('vendaProduto').value);if(p&&document.activeElement!==document.getElementById('vendaPreco'))document.getElementById('vendaPreco').value=Number(p.price).toFixed(2);
- const t=saleTotals();document.getElementById('subtotalVendaPreview').textContent=money(t.subtotal);document.getElementById('descontoCarrinhoPreview').textContent=money(t.discountCash+Math.round(Math.max(0,t.subtotal-t.discountCash)*t.discountPercent)/100);document.getElementById('totalVendaPreview').textContent=money(t.total);updatePaymentSummary();
+ const t=saleTotals();document.getElementById('subtotalVendaPreview').textContent=money(t.subtotal);document.getElementById('totalVendaPreview').textContent=money(t.total);updatePaymentSummary();
 }
-['vendaProduto','vendaQuantidade','vendaPreco'].forEach(key=>document.getElementById(key).addEventListener(key==='vendaProduto'?'change':'input',()=>{if(key==='vendaProduto'){const p=productById(document.getElementById(key).value);if(p)document.getElementById('vendaPreco').value=Number(p.price).toFixed(2);} }));
-['vendaDescontoReais','vendaDescontoPercentual'].forEach(key=>document.getElementById(key).addEventListener('input',updateSalePreview));
+['vendaProduto','vendaQuantidade','vendaPreco','vendaDescontoReais','vendaDescontoPercentual'].forEach(key=>document.getElementById(key).addEventListener(key==='vendaProduto'?'change':'input',updateSalePreview));
 document.getElementById('adicionarPagamento').addEventListener('click',addPaymentRow);
 document.getElementById('formVenda').addEventListener('submit',e=>{
- e.preventDefault();if(!saleCart.length){toast('Adicione pelo menos um produto ao carrinho.',true);return;}
- const client=document.getElementById('vendaCliente').value.trim(),note=document.getElementById('vendaObs').value.trim(),totals=saleTotals(),payments=readPayments(),received=Math.round(payments.reduce((s,x)=>s+x.amount,0)*100)/100;
- for(const item of saleCart){const p=productById(item.productId);if(!p||item.quantity<1||item.quantity>p.stock){toast(`Estoque insuficiente ou produto indisponível: ${item.productName}.`,true);return;}}
+ e.preventDefault();const p=productById(document.getElementById('vendaProduto').value),qty=Number(document.getElementById('vendaQuantidade').value),price=Number(document.getElementById('vendaPreco').value),client=document.getElementById('vendaCliente').value.trim(),note=document.getElementById('vendaObs').value.trim(),totals=saleTotals(),payments=readPayments(),received=Math.round(payments.reduce((s,x)=>s+x.amount,0)*100)/100;
+ if(!p){toast('Cadastre e selecione um produto primeiro.',true);return;}if(!Number.isInteger(qty)||qty<1){toast('Informe uma quantidade inteira maior que zero.',true);return;}if(qty>p.stock){toast(`Estoque insuficiente. Disponível: ${p.stock}.`,true);return;}if(!Number.isFinite(price)||price<0){toast('Informe um preço válido.',true);return;}
  if(totals.discountCash<0||totals.discountPercent<0||totals.discountPercent>100){toast('Confira os descontos informados.',true);return;}
  if(!payments.length||payments.some(x=>!x.method||x.amount<=0)){toast('Informe a forma e o valor de cada pagamento.',true);return;}
  if(payments.some(x=>x.method==='Cartão de crédito'&&(!Number.isInteger(x.installments)||x.installments<1))){toast('Informe um número válido de parcelas para cada cartão.',true);return;}
  if(Math.abs(received-totals.total)>0.009){toast(`Os pagamentos devem somar exatamente ${money(totals.total)}. Saldo: ${money(totals.total-received)}.`,true);return;}
  const paymentDetails=payments.map(x=>x.method==='Cartão de crédito'?`${x.method}: ${money(x.amount)} em ${x.installments}x (${x.responsible==='fabrica'?'fábrica':'loja'})`:`${x.method}: ${money(x.amount)}`).join(' | ');
- const saleId=id(),percentDiscount=Math.round(Math.max(0,totals.subtotal-totals.discountCash)*totals.discountPercent)/100,discountTotal=totals.discountCash+percentDiscount;
- let remainingDiscount=discountTotal,remainingNet=totals.total;
- const items=saleCart.map((item,index)=>{const p=productById(item.productId),lineSubtotal=Math.round(item.quantity*item.unitPrice*100)/100;let lineDiscount=index===saleCart.length-1?remainingDiscount:Math.round(discountTotal*(lineSubtotal/(totals.subtotal||1))*100)/100;lineDiscount=Math.max(0,Math.min(lineSubtotal,lineDiscount));remainingDiscount=Math.round((remainingDiscount-lineDiscount)*100)/100;let lineTotal=index===saleCart.length-1?remainingNet:Math.round((lineSubtotal-lineDiscount)*100)/100;remainingNet=Math.round((remainingNet-lineTotal)*100)/100;return {...item,subtotal:lineSubtotal,discount:lineDiscount,total:lineTotal,unitCost:Number(p.cost||0),costTotal:Math.round(Number(p.cost||0)*item.quantity*100)/100};});
- const details=[client?`Cliente: ${client}`:'',`Subtotal: ${money(totals.subtotal)}`,discountTotal?`Desconto total: ${money(discountTotal)}`:'',`Pagamentos: ${paymentDetails}`,note].filter(Boolean).join(' · '),date=new Date().toISOString();
- items.forEach(item=>{const p=productById(item.productId);p.stock-=item.quantity;recordMovement('venda',p,item.quantity,item.total,details,{saleId,client,payments,subtotal:item.subtotal,discountCash:0,discountPercent:0,unitPrice:item.unitPrice,unitCost:item.unitCost,costTotal:item.costTotal,profit:Math.round((item.total-item.costTotal)*100)/100,productDiscount:item.discount,note,paymentDetails,date});});
- const receipt={id:saleId,saleId,date,client,note,items,subtotal:totals.subtotal,discountCash:totals.discountCash,discountPercent:totals.discountPercent,total:totals.total,paymentDetails,details};
- if(saveData()){e.target.reset();saleCart=[];renderCart();document.getElementById('linhasPagamento').innerHTML='';addPaymentRow();updateSalePreview();toast('Venda registrada. Abrindo recibo para imprimir ou salvar em PDF.');printSaleReceipt(receipt);}
+ const details=[client?`Cliente: ${client}`:'',`Subtotal: ${money(totals.subtotal)}`,totals.discountCash?`Desconto: ${money(totals.discountCash)} + ${totals.discountPercent}%`:'',`Pagamentos: ${paymentDetails}`,note].filter(Boolean).join(' · ');
+ p.stock-=qty;recordMovement('venda',p,qty,totals.total,details,{client,payments,subtotal:totals.subtotal,discountCash:totals.discountCash,discountPercent:totals.discountPercent});
+ if(saveData()){e.target.reset();document.getElementById('linhasPagamento').innerHTML='';addPaymentRow();updateSalePreview();toast('Venda registrada e estoque atualizado.');}
 });
 document.getElementById('filtroTipo').addEventListener('change',renderHistory);
 document.getElementById('limparHistorico').addEventListener('click',()=>{if(!confirm('Apagar o histórico? Os produtos e quantidades em estoque serão mantidos.'))return;data.movements=[];if(saveData())toast('Histórico apagado.');});
-document.getElementById('fazerBackup').addEventListener('click',()=>{if(document.body.dataset.ckrRole!=='admin'){toast('Somente o ADMIN pode fazer backup.',true);return;}const blob=new Blob([JSON.stringify({...data,exportedAt:new Date().toISOString()},null,2)],{type:'application/json;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`conceito-backup-${new Date().toISOString().slice(0,10)}.json`;document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);toast('Backup exportado. Guarde o arquivo em local seguro.');});
-document.getElementById('restaurarBackup').addEventListener('click',async()=>{if(document.body.dataset.ckrRole!=='admin'){toast('Somente o ADMIN pode restaurar backup.',true);return;}const file=document.getElementById('arquivoBackup').files[0];if(!file){toast('Escolha um arquivo JSON primeiro.',true);return;}if(!confirm('A restauração vai substituir os dados deste dispositivo. Deseja continuar?'))return;try{const imported=JSON.parse(await file.text());if(!Array.isArray(imported.products)||!Array.isArray(imported.movements))throw Error('Formato');for(const p of imported.products){if(!p.id||!String(p.name||'').trim()||!Number.isFinite(Number(p.stock))||Number(p.stock)<0)throw Error('Produto');}data={version:3,products:imported.products,movements:imported.movements,customers:Array.isArray(imported.customers)?imported.customers:[]};if(saveData()){document.getElementById('arquivoBackup').value='';resetProductForm();toast('Backup restaurado com sucesso.');}}catch(err){toast('Arquivo inválido ou incompatível com o Conceito Web V2.',true);}});
-document.getElementById('apagarTudo').addEventListener('click',()=>{if(document.body.dataset.ckrRole!=='admin'){toast('Somente o ADMIN pode apagar os dados.',true);return;}if(!confirm('Isso apagará todos os produtos, clientes, entradas e vendas deste navegador. Continuar?'))return;if(!confirm('Confirme mais uma vez. Só será possível recuperar com backup.'))return;data=emptyData();if(saveData()){resetProductForm();toast('Dados locais apagados.');}});
-document.getElementById('gerarRelatorio').addEventListener('click',()=>{const a=document.getElementById('relatorioDataInicio').value,b=document.getElementById('relatorioDataFim').value;if(a&&b&&a>b){toast('A data inicial não pode ser posterior à data final.',true);return;}renderDateReport();});
-['relatorioDataInicio','relatorioDataFim','relatorioTipo'].forEach(k=>document.getElementById(k).addEventListener('change',renderDateReport));
-document.getElementById('exportarRelatorioCsv').addEventListener('click',()=>{const rows=getDateReportRows();const cell=v=>'"'+String(v??'').replace(/"/g,'""')+'"';const lines=[['Data e hora','Tipo','Produto','Quantidade','Valor','Cliente','Detalhes'].map(cell).join(';'),...rows.map(m=>[dateText(m.date),m.type==='venda'?'Venda':'Entrada',m.productName,m.quantity,Number(m.total||0).toFixed(2).replace('.',','),m.client||'',m.details||''].map(cell).join(';'))];const blob=new Blob(['\ufeff'+lines.join('\r\n')],{type:'text/csv;charset=utf-8;'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`conceito-relatorio-${document.getElementById('relatorioDataInicio').value||'inicio'}-${document.getElementById('relatorioDataFim').value||'hoje'}.csv`;document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);});
-document.getElementById('imprimirRelatorio').addEventListener('click',()=>{renderDateReport();window.print();});
-// Período padrão: mês atual
-const reportToday=new Date();document.getElementById('relatorioDataInicio').value=`${reportToday.getFullYear()}-${String(reportToday.getMonth()+1).padStart(2,'0')}-01`;document.getElementById('relatorioDataFim').value=localDateKey(reportToday);
+document.getElementById('fazerBackup').addEventListener('click',()=>{const blob=new Blob([JSON.stringify({...data,exportedAt:new Date().toISOString()},null,2)],{type:'application/json;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`ckr-backup-${new Date().toISOString().slice(0,10)}.json`;document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);toast('Backup exportado. Guarde o arquivo em local seguro.');});
+document.getElementById('restaurarBackup').addEventListener('click',async()=>{const file=document.getElementById('arquivoBackup').files[0];if(!file){toast('Escolha um arquivo JSON primeiro.',true);return;}if(!confirm('A restauração vai substituir os dados deste dispositivo. Deseja continuar?'))return;try{const imported=JSON.parse(await file.text());if(!Array.isArray(imported.products)||!Array.isArray(imported.movements))throw Error('Formato');for(const p of imported.products){if(!p.id||!String(p.name||'').trim()||!Number.isFinite(Number(p.stock))||Number(p.stock)<0)throw Error('Produto');}data={version:3,products:imported.products,movements:imported.movements,customers:Array.isArray(imported.customers)?imported.customers:[]};if(saveData()){document.getElementById('arquivoBackup').value='';resetProductForm();toast('Backup restaurado com sucesso.');}}catch(err){toast('Arquivo inválido ou incompatível com o CKR Web V2.',true);}});
+document.getElementById('apagarTudo').addEventListener('click',()=>{if(!confirm('Isso apagará todos os produtos, clientes, entradas e vendas deste navegador. Continuar?'))return;if(!confirm('Confirme mais uma vez. Só será possível recuperar com backup.'))return;data=emptyData();if(saveData()){resetProductForm();toast('Dados locais apagados.');}});
 renderAll();
-renderCart();
 addPaymentRow();
-
-
-// Login local com perfil ADMIN e usuários temporários. Não substitui autenticação no servidor.
-(function setupLocalLogin(){
- const AUTH_KEY='ckr_web_local_admin_v1', SESSION_KEY='ckr_web_local_session_v1', USERS_KEY='ckr_web_local_users_v1';
- const gate=document.getElementById('ckrAuthGate'), shell=document.getElementById('ckrAppShell');
- const loginForm=document.getElementById('ckrLoginForm');
- const desc=document.getElementById('authDescription'), error=document.getElementById('ckrAuthError');
- const userInput=document.getElementById('ckrLoginUser'), passInput=document.getElementById('ckrLoginPassword');
- const manageButton=document.getElementById('ckrManageUsers'), manageSidebar=document.getElementById('ckrManageUsersSidebar'), usersModal=document.getElementById('ckrUsersModal');
- let admin=null, users=[], currentUser=null;
- try{admin=JSON.parse(localStorage.getItem(AUTH_KEY)||'null');}catch(e){admin=null;}
- try{users=JSON.parse(localStorage.getItem(USERS_KEY)||'[]');if(!Array.isArray(users))users=[];}catch(e){users=[];}
- const saveUsers=()=>localStorage.setItem(USERS_KEY,JSON.stringify(users));
- // Credenciais iniciais: admin permanente e user com prazo de 182,5 dias.
- if(!admin||!admin.username||!admin.password){admin={username:'admin',password:'contador123'};localStorage.setItem(AUTH_KEY,JSON.stringify(admin));}
- if(!users.some(u=>String(u.username||'').toLowerCase()==='user')){
-   users.push({username:'user',password:'user123',createdAt:new Date().toISOString(),expiresAt:new Date(Date.now()+182.5*24*60*60*1000).toISOString()});
-   saveUsers();
- }
- const normalized=s=>String(s||'').trim().toLowerCase();
- function showLogin(){gate.hidden=false;shell.hidden=true;loginForm.hidden=false;desc.textContent='Informe seu usuário e senha para continuar.';error.textContent='';userInput.focus();}
- function updateExpiryStatus(){const el=document.getElementById('ckrExpiryStatus');if(!el)return;if(!currentUser||currentUser.role==='admin'){el.hidden=true;el.textContent='';return;}const found=users.find(u=>normalized(u.username)===normalized(currentUser.username));if(!found||!found.expiresAt){el.hidden=true;el.textContent='';return;}const remaining=new Date(found.expiresAt).getTime()-Date.now();if(remaining<=0){el.textContent='◷ Acesso expirado';el.hidden=false;el.classList.add('expired');return;}const days=Math.ceil(remaining/(24*60*60*1000));el.textContent='◷ '+days+' '+(days===1?'dia':'dias');el.hidden=false;el.classList.remove('expired');}
- function enter(user){currentUser=user;document.body.dataset.ckrRole=user.role;sessionStorage.setItem(SESSION_KEY,JSON.stringify({username:user.username,role:user.role}));gate.hidden=true;shell.hidden=false;document.getElementById('ckrUserAvatar').textContent=(user.username||'AD').trim().slice(0,2).toUpperCase();manageButton.hidden=user.role!=='admin';if(manageSidebar)manageSidebar.hidden=user.role!=='admin';document.querySelectorAll('[data-panel="backup"],[data-go="backup"]').forEach(el=>{el.hidden=user.role!=='admin';});updateExpiryStatus();const backupPanel=document.getElementById('panel-backup');if(backupPanel&&user.role!=='admin'&&backupPanel.classList.contains('active'))goTo('dashboard');}
- function getValidUser(username,password){
-   if(admin&&normalized(username)===normalized(admin.username)&&password===admin.password)return {username:admin.username,role:'admin'};
-   const found=users.find(u=>normalized(u.username)===normalized(username));
-   if(!found||found.password!==password)return null;
-   if(found.expiresAt && Date.now()>=new Date(found.expiresAt).getTime())return {expired:true,username:found.username};
-   return {username:found.username,role:'usuario'};
- }
- const changePasswordForm=document.getElementById('ckrChangePasswordForm');
- function hidePasswordChange(){
-   changePasswordForm.hidden=true;
-   changePasswordForm.style.display='none';
-   changePasswordForm.reset();
-   document.getElementById('ckrPasswordError').textContent='';
-   delete changePasswordForm.dataset.username;
- }
- function openPasswordChange(username){
-   if(!currentUser||currentUser.role!=='admin'){
-     toast('Somente o ADMIN pode alterar senhas.',true);
-     return;
-   }
-   changePasswordForm.reset();
-   document.getElementById('ckrPasswordTarget').textContent=username;
-   document.getElementById('ckrPasswordError').textContent='';
-   changePasswordForm.dataset.username=username;
-   changePasswordForm.hidden=false;
-   changePasswordForm.style.display='grid';
-   document.getElementById('ckrAdminNewPassword').focus();
- }
- function renameUsername(oldName){
-   if(!currentUser||currentUser.role!=='admin')return;
-   const next=prompt('Novo nome de usuário:',oldName);
-   if(next===null)return;
-   const username=next.trim();
-   if(username.length<3){toast('O usuário precisa ter pelo menos 3 caracteres.',true);return;}
-   if(users.some(u=>normalized(u.username)===normalized(username)&&normalized(u.username)!==normalized(oldName))||
-      (admin&&normalized(admin.username)===normalized(username)&&normalized(admin.username)!==normalized(oldName))){
-     toast('Esse nome de usuário já está cadastrado.',true);return;
-   }
-   if(admin&&normalized(oldName)===normalized(admin.username)){
-     admin={...admin,username};localStorage.setItem(AUTH_KEY,JSON.stringify(admin));
-     if(currentUser)currentUser.username=username;
-   }else{
-     const u=users.find(x=>normalized(x.username)===normalized(oldName));if(!u)return;
-     u.username=username;saveUsers();
-   }
-   renderUsers();toast('Nome de usuário atualizado.');
- }
- function renderUsers(){
-   const list=document.getElementById('ckrUsersList');
-   list.innerHTML='';
-
-   // A conta ADMIN também pode ter a senha redefinida por aqui.
-   if(admin&&admin.username){
-     const row=document.createElement('div');
-     row.className='users-row';
-     const info=document.createElement('div');
-     const name=document.createElement('strong');
-     name.textContent=admin.username+' (ADMIN)';
-     const meta=document.createElement('small');
-     meta.textContent='Administrador • acesso permanente';
-     info.append(name,meta);
-     const rename=document.createElement('button');rename.type='button';rename.className='button';rename.textContent='Editar usuário';rename.addEventListener('click',()=>renameUsername(admin.username));row.append(rename);
-     const change=document.createElement('button');
-     change.type='button';
-     change.className='button';
-     change.textContent='Alterar senha';
-     change.addEventListener('click',()=>openPasswordChange(admin.username));
-     row.append(info,change);
-     list.append(row);
-   }
-
-   if(!users.length){
-     if(!admin) list.innerHTML='<div class="users-empty">Nenhum usuário cadastrado.</div>';
-     return;
-   }
-
-   users.forEach((u,i)=>{
-     const row=document.createElement('div');
-     row.className='users-row';
-     const info=document.createElement('div');
-     const name=document.createElement('strong');
-     name.textContent=u.username;
-     const meta=document.createElement('small');
-     meta.textContent=u.expiresAt?'Expira em '+new Date(u.expiresAt).toLocaleString('pt-BR'):'Prazo não definido';
-     info.append(name,meta);
-
-     const actions=document.createElement('div');
-     const rename=document.createElement('button');rename.type='button';rename.className='button';rename.textContent='Editar usuário';rename.addEventListener('click',()=>renameUsername(u.username));
-     const change=document.createElement('button');
-     change.type='button';
-     change.className='button';
-     change.textContent='Alterar senha';
-     change.addEventListener('click',()=>openPasswordChange(u.username));
-
-     const del=document.createElement('button');
-     del.type='button';
-     del.className='button button-danger-light';
-     del.textContent='Excluir';
-     del.addEventListener('click',()=>{
-       if(currentUser?.role!=='admin')return;
-       if(!confirm('Excluir o usuário '+u.username+'?'))return;
-       users.splice(i,1);
-       saveUsers();
-       renderUsers();
-       toast('Usuário excluído.');
-     });
-     actions.append(rename,change,del);
-     row.append(info,actions);
-     list.append(row);
-   });
- }
- document.getElementById('ckrCancelPasswordChange').addEventListener('click',hidePasswordChange);
- changePasswordForm.addEventListener('submit',e=>{
-   e.preventDefault();
-   const err=document.getElementById('ckrPasswordError');
-   err.textContent='';
-   if(!currentUser||currentUser.role!=='admin'){
-     err.textContent='Somente o ADMIN pode alterar senhas.';
-     return;
-   }
-   const username=changePasswordForm.dataset.username;
-   const newPassword=document.getElementById('ckrAdminNewPassword').value;
-   const confirmPassword=document.getElementById('ckrAdminConfirmPassword').value;
-   if(!username){err.textContent='Selecione um usuário.';return;}
-   if(newPassword.length<6){err.textContent='A senha precisa ter pelo menos 6 caracteres.';return;}
-   if(newPassword!==confirmPassword){err.textContent='As senhas não coincidem.';return;}
-   try{
-     if(admin&&normalized(username)===normalized(admin.username)){
-       const updatedAdmin={...admin,password:newPassword};
-       localStorage.setItem(AUTH_KEY,JSON.stringify(updatedAdmin));
-       admin=updatedAdmin;
-     }else{
-       const user=users.find(u=>normalized(u.username)===normalized(username));
-       if(!user){err.textContent='Usuário não encontrado.';return;}
-       const oldPassword=user.password;
-       user.password=newPassword;
-       try{saveUsers();}catch(saveError){user.password=oldPassword;throw saveError;}
-     }
-     hidePasswordChange();
-     renderUsers();
-     toast('Senha alterada com sucesso.');
-   }catch(ex){
-     err.textContent='Não foi possível salvar a nova senha neste navegador.';
-   }
- });
- function openUsers(){
-   if(!currentUser||currentUser.role!=='admin'){
-     toast('Somente o ADMIN pode gerenciar usuários.',true);
-     return;
-   }
-   hidePasswordChange();
-   document.getElementById('ckrUsersError').textContent='';
-   document.getElementById('ckrCreateUserForm').reset();
-   renderUsers();
-   usersModal.hidden=false;
-   document.getElementById('ckrNewUsername').focus();
- }
- function closeUsers(){hidePasswordChange();usersModal.hidden=true;}
- manageButton.addEventListener('click',openUsers);if(manageSidebar)manageSidebar.addEventListener('click',openUsers);document.getElementById('ckrCloseUsers').addEventListener('click',closeUsers);usersModal.addEventListener('click',e=>{if(e.target===usersModal)closeUsers();});
- document.getElementById('ckrCreateUserForm').addEventListener('submit',e=>{e.preventDefault();const err=document.getElementById('ckrUsersError');err.textContent='';if(!currentUser||currentUser.role!=='admin'){err.textContent='Somente o ADMIN pode criar usuários.';return;}
-   const username=document.getElementById('ckrNewUsername').value.trim(),password=document.getElementById('ckrNewPassword').value,confirmPassword=document.getElementById('ckrNewPasswordConfirm').value;
-   if(username.length<3){err.textContent='O usuário precisa ter pelo menos 3 caracteres.';return;}if(password.length<6){err.textContent='A senha precisa ter pelo menos 6 caracteres.';return;}if(password!==confirmPassword){err.textContent='As senhas não coincidem.';return;}
-   if(normalized(username)===normalized(admin.username)||users.some(u=>normalized(u.username)===normalized(username))){err.textContent='Esse nome de usuário já está cadastrado.';return;}
-   const created=Date.now(), expiry=new Date(created+182.5*24*60*60*1000).toISOString();users.push({username,password,createdAt:new Date(created).toISOString(),expiresAt:expiry});
-   try{saveUsers();renderUsers();e.target.reset();toast('Usuário criado. O acesso expira em 182,5 dias.');}catch(ex){users.pop();err.textContent='Não foi possível salvar o usuário neste navegador.';}
- });
- if(sessionStorage.getItem(SESSION_KEY)){try{const sess=JSON.parse(sessionStorage.getItem(SESSION_KEY));const u=getValidUser(sess.username, sess.role==='admin'?admin.password:(users.find(x=>normalized(x.username)===normalized(sess.username))||{}).password);if(u&&!u.expired)enter(u);else{sessionStorage.removeItem(SESSION_KEY);showLogin();}}catch(e){showLogin();}}
- else{showLogin();}
- loginForm.addEventListener('submit',e=>{
-   e.preventDefault();error.textContent='';
-   const username=userInput.value.trim(),password=passInput.value;
-   // Recuperação compatível: credencial inicial ADMIN funciona mesmo se uma senha antiga
-   // ficou gravada no localStorage por uma versão anterior do sistema.
-   if(normalized(username)==='admin' && password==='contador123'){
-     try{admin={username:'admin',password:'contador123'};localStorage.setItem(AUTH_KEY,JSON.stringify(admin));}
-     catch(storageError){/* ainda permite a sessão nesta aba, mesmo se o armazenamento estiver bloqueado */}
-     passInput.value='';enter({username:'admin',role:'admin'});return;
-   }
-   const u=getValidUser(username,password);
-   if(u&&u.expired){error.textContent='O prazo de uso deste usuário terminou. Solicite ao ADMIN um novo acesso.';passInput.value='';return;}
-   if(u){passInput.value='';enter(u);}
-   else{error.textContent='Usuário ou senha incorretos. Confira os dados e tente novamente.';passInput.value='';passInput.focus();}
- });
- setInterval(updateExpiryStatus,60000);
- document.getElementById('ckrLogout').addEventListener('click',()=>{sessionStorage.removeItem(SESSION_KEY);currentUser=null;updateExpiryStatus();delete document.body.dataset.ckrRole;closeUsers();showLogin();passInput.value='';});
-})();
