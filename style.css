@@ -202,3 +202,12 @@ table{max-width:100%}
 @media(max-width:380px){.content{padding:14px 10px}.stats-grid{grid-template-columns:1fr 1fr}}
 /* celular deitado (altura curta) */
 @media(max-height:480px) and (orientation:landscape){.topbar{height:52px}.auth-gate,.users-modal{align-items:flex-start}}
+
+/* Gerenciar usuários: select, edição e renovação */
+.users-card select{width:100%;box-sizing:border-box;min-height:44px;border:1px solid #d0d5dd;border-radius:10px;padding:10px 12px;font:inherit;background:#fff}
+.users-card form[id="ckrEditUserForm"],.users-card form[id="ckrChangePasswordForm"]{margin-top:18px;padding-top:6px;border-top:1px solid #eaecf0}
+.users-renew{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:12px;font-size:12px;color:#667085}
+.users-row{flex-wrap:wrap}.users-row>div:last-child{display:flex;flex-wrap:wrap;gap:6px}
+
+/* garante que itens escondidos por perfil realmente sumam */
+[hidden]{display:none!important}
