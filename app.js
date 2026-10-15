@@ -100,7 +100,9 @@ function toast(message,error=false){const el=document.getElementById('toast');el
 function productById(pid){return data.products.find(p=>p.id===pid);}
 function recordMovement(type,p,qty,total,details='',extra={}){data.movements.unshift({id:id(),type,productId:p.id,productName:p.name,quantity:Number(qty),total:Number(total||0),details,...extra,date:new Date().toISOString()});}
 function dateText(d){return new Date(d).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'});}
-function goTo(name){if(name==='backup'&&document.body.dataset.ckrRole!=='admin'){toast('Somente o ADMIN pode acessar Backup e transferência.',true);return;}document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active',p.id===`panel-${name}`));document.querySelectorAll('.nav-link').forEach(b=>b.classList.toggle('active',b.dataset.panel===name));const selected=document.querySelector(`.nav-link[data-panel="${name}"]`);document.getElementById('pageBreadcrumb').textContent=selected?selected.textContent.trim().replace(/\d+$/,'').trim():'Visão geral';document.getElementById('sidebar').classList.remove('open');window.scrollTo({top:0,behavior:'smooth'});}
+// Usuários que não são ADMIN só acessam estes painéis:
+const USER_PANELS=['dashboard','clientes','venda'];
+function goTo(name){if(document.body.dataset.ckrRole!=='admin'&&!USER_PANELS.includes(name)){toast('Seu acesso permite apenas Visão geral, Clientes e Registrar venda.',true);return;}document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active',p.id===`panel-${name}`));document.querySelectorAll('.nav-link').forEach(b=>b.classList.toggle('active',b.dataset.panel===name));const selected=document.querySelector(`.nav-link[data-panel="${name}"]`);document.getElementById('pageBreadcrumb').textContent=selected?selected.textContent.trim().replace(/\d+$/,'').trim():'Visão geral';document.getElementById('sidebar').classList.remove('open');window.scrollTo({top:0,behavior:'smooth'});}
 document.querySelectorAll('[data-panel]').forEach(b=>b.addEventListener('click',()=>goTo(b.dataset.panel)));
 document.querySelectorAll('[data-go]').forEach(b=>b.addEventListener('click',()=>goTo(b.dataset.go)));
 document.getElementById('mobileMenu').addEventListener('click',()=>document.getElementById('sidebar').classList.toggle('open'));
@@ -377,21 +379,66 @@ addPaymentRow();
  const desc=document.getElementById('authDescription'), error=document.getElementById('ckrAuthError'), setupError=document.getElementById('ckrSetupError');
  const userInput=document.getElementById('ckrLoginUser'), passInput=document.getElementById('ckrLoginPassword');
  const manageButton=document.getElementById('ckrManageUsers'), manageSidebar=document.getElementById('ckrManageUsersSidebar'), usersModal=document.getElementById('ckrUsersModal');
+ // ===== ADMIN PADRÃO =====
+ // Usuário e senha já vêm prontos no sistema (não precisa mais do "primeiro acesso").
+ // Padrão: usuário  admin  /  senha  contador123
+ // A senha fica guardada só como "hash" (SHA-256), nunca em texto puro no código.
+ // Para trocar a senha padrão: entre como admin > Gerenciar usuários > Alterar senha.
+ const DEFAULT_ADMIN={username:'admin',password:'sha256:517e4e086d8298b5a78075f5b17b862999154ab8f6c243304a4442f55801e093'};
+ function sha256hex(str){
+   const msg=unescape(encodeURIComponent(str)),K=[],H=[];
+   const frac=x=>Math.floor((x-Math.floor(x))*4294967296);
+   for(let n=2,c=0;c<64;n++){let p=true;for(let d=2;d*d<=n;d++)if(n%d===0){p=false;break;}if(p){if(c<8)H[c]=frac(Math.pow(n,1/2));K[c]=frac(Math.pow(n,1/3));c++;}}
+   const bytes=[];for(let i=0;i<msg.length;i++)bytes.push(msg.charCodeAt(i));
+   const bitLen=bytes.length*8;bytes.push(0x80);while(bytes.length%64!==56)bytes.push(0);
+   for(let i=7;i>=0;i--)bytes.push(i>=4?0:(bitLen>>>(i*8))&255);
+   const rotr=(x,n)=>(x>>>n)|(x<<(32-n));
+   for(let off=0;off<bytes.length;off+=64){
+     const w=[];for(let i=0;i<16;i++)w[i]=(bytes[off+i*4]<<24)|(bytes[off+i*4+1]<<16)|(bytes[off+i*4+2]<<8)|bytes[off+i*4+3];
+     for(let i=16;i<64;i++){const s0=rotr(w[i-15],7)^rotr(w[i-15],18)^(w[i-15]>>>3),s1=rotr(w[i-2],17)^rotr(w[i-2],19)^(w[i-2]>>>10);w[i]=(w[i-16]+s0+w[i-7]+s1)|0;}
+     let [a,b,c,d,e,f,g,hh]=H;
+     for(let i=0;i<64;i++){const S1=rotr(e,6)^rotr(e,11)^rotr(e,25),ch=(e&f)^(~e&g),t1=(hh+S1+ch+K[i]+w[i])|0,S0=rotr(a,2)^rotr(a,13)^rotr(a,22),mj=(a&b)^(a&c)^(b&c),t2=(S0+mj)|0;hh=g;g=f;f=e;e=(d+t1)|0;d=c;c=b;b=a;a=(t1+t2)|0;}
+     H[0]=(H[0]+a)|0;H[1]=(H[1]+b)|0;H[2]=(H[2]+c)|0;H[3]=(H[3]+d)|0;H[4]=(H[4]+e)|0;H[5]=(H[5]+f)|0;H[6]=(H[6]+g)|0;H[7]=(H[7]+hh)|0;
+   }
+   return H.map(x=>(x>>>0).toString(16).padStart(8,'0')).join('');
+ }
+ const hashPw=password=>'sha256:'+sha256hex('conceito-v3|'+password);
+ const passOk=(stored,password)=>String(stored||'').startsWith('sha256:')?stored===hashPw(password):stored===password;
  let admin=null, users=[], currentUser=null;
  try{admin=JSON.parse(localStorage.getItem(AUTH_KEY)||'null');}catch(e){admin=null;}
  try{users=JSON.parse(localStorage.getItem(USERS_KEY)||'[]');if(!Array.isArray(users))users=[];}catch(e){users=[];}
+ if(!admin||!admin.username||!admin.password)admin={...DEFAULT_ADMIN};
+ // ===== USUÁRIO PADRÃO (com prazo) =====
+ // Padrão: usuário  user  /  senha  user123  -> acesso por tempo determinado (começa a contar no 1º uso neste navegador).
+ // O ADMIN pode editar o prazo, trocar a senha ou excluir este usuário (depois de excluído ele não volta).
+ const DEFAULT_USER={username:'user',password:'sha256:a8e15d73ede61437977070225d9ebb266ff0875deb8063c3593e78d86c7f218f',days:182.5};
+ const SEED_KEY='ckr_web_default_user_seeded_v1';
+ try{
+   if(!localStorage.getItem(SEED_KEY)){
+     if(!users.some(u=>String(u.username||'').trim().toLowerCase()===DEFAULT_USER.username)&&DEFAULT_USER.username!==String(admin.username).trim().toLowerCase()){
+       const now=Date.now();
+       users.push({username:DEFAULT_USER.username,password:DEFAULT_USER.password,createdAt:new Date(now).toISOString(),expiresAt:new Date(now+DEFAULT_USER.days*86400000).toISOString()});
+       localStorage.setItem(USERS_KEY,JSON.stringify(users));
+     }
+     localStorage.setItem(SEED_KEY,'1');
+   }
+ }catch(e){}
  const saveUsers=()=>localStorage.setItem(USERS_KEY,JSON.stringify(users));
  const normalized=s=>String(s||'').trim().toLowerCase();
  function showLogin(){gate.hidden=false;shell.hidden=true;loginForm.hidden=false;setupForm.hidden=true;showSetupButton.hidden=!!(admin&&admin.username&&admin.password);desc.textContent='Informe seu usuário e senha para continuar.';error.textContent='';userInput.focus();}
  function showSetup(){gate.hidden=false;shell.hidden=true;loginForm.hidden=true;setupForm.hidden=false;showSetupButton.hidden=true;desc.textContent='Crie o usuário ADMIN e uma senha para este navegador.';setupError.textContent='';document.getElementById('ckrSetupUser').focus();}
  showSetupButton.addEventListener('click',()=>{showSetup();});
  function updateExpiryStatus(){const el=document.getElementById('ckrExpiryStatus');if(!el)return;if(!currentUser||currentUser.role==='admin'){el.hidden=true;el.textContent='';return;}const found=users.find(u=>normalized(u.username)===normalized(currentUser.username));if(!found||!found.expiresAt){el.hidden=true;el.textContent='';return;}const remaining=new Date(found.expiresAt).getTime()-Date.now();if(remaining<=0){el.textContent='◷ Acesso expirado';el.hidden=false;el.classList.add('expired');return;}const days=Math.ceil(remaining/(24*60*60*1000));el.textContent='◷ '+days+' '+(days===1?'dia':'dias');el.hidden=false;el.classList.remove('expired');}
- function enter(user){currentUser=user;document.body.dataset.ckrRole=user.role;sessionStorage.setItem(SESSION_KEY,JSON.stringify({username:user.username,role:user.role}));gate.hidden=true;shell.hidden=false;document.getElementById('ckrUserAvatar').textContent=(user.username||'AD').trim().slice(0,2).toUpperCase();manageButton.hidden=user.role!=='admin';if(manageSidebar)manageSidebar.hidden=user.role!=='admin';document.querySelectorAll('[data-panel="backup"],[data-go="backup"]').forEach(el=>{el.hidden=user.role!=='admin';});updateExpiryStatus();const backupPanel=document.getElementById('panel-backup');if(backupPanel&&user.role!=='admin'&&backupPanel.classList.contains('active'))goTo('dashboard');}
+ function enter(user){currentUser=user;document.body.dataset.ckrRole=user.role;sessionStorage.setItem(SESSION_KEY,JSON.stringify({username:user.username,role:user.role}));gate.hidden=true;shell.hidden=false;document.getElementById('ckrUserAvatar').textContent=(user.username||'AD').trim().slice(0,2).toUpperCase();manageButton.hidden=user.role!=='admin';if(manageSidebar)manageSidebar.hidden=user.role!=='admin';document.querySelectorAll('[data-panel],[data-go]').forEach(el=>{const target=el.dataset.panel||el.dataset.go;el.hidden=user.role!=='admin'&&!USER_PANELS.includes(target);});updateExpiryStatus();if(user.role!=='admin'){const act=document.querySelector('.panel.active');if(!act||!USER_PANELS.includes(act.id.replace('panel-','')))goTo('dashboard');}}
  function getValidUser(username,password){
-   if(admin&&normalized(username)===normalized(admin.username)&&password===admin.password)return {username:admin.username,role:'admin'};
+   if(admin&&normalized(username)===normalized(admin.username)&&passOk(admin.password,password)){
+     if(!String(admin.password).startsWith('sha256:')){admin={...admin,password:hashPw(password)};try{localStorage.setItem(AUTH_KEY,JSON.stringify(admin));}catch(e){}}
+     return {username:admin.username,role:'admin'};
+   }
    const found=users.find(u=>normalized(u.username)===normalized(username));
-   if(!found||found.password!==password)return null;
+   if(!found||!passOk(found.password,password))return null;
    if(found.expiresAt && Date.now()>=new Date(found.expiresAt).getTime())return {expired:true,username:found.username};
+   if(!String(found.password).startsWith('sha256:')){found.password=hashPw(password);try{saveUsers();}catch(e){}}
    return {username:found.username,role:'usuario'};
  }
  const changePasswordForm=document.getElementById('ckrChangePasswordForm');
@@ -407,6 +454,7 @@ addPaymentRow();
      toast('Somente o ADMIN pode alterar senhas.',true);
      return;
    }
+   if(typeof hideEditUser==='function')hideEditUser();
    changePasswordForm.reset();
    document.getElementById('ckrPasswordTarget').textContent=username;
    document.getElementById('ckrPasswordError').textContent='';
@@ -450,7 +498,7 @@ addPaymentRow();
      const name=document.createElement('strong');
      name.textContent=u.username;
      const meta=document.createElement('small');
-     meta.textContent=u.expiresAt?'Expira em '+new Date(u.expiresAt).toLocaleString('pt-BR'):'Prazo não definido';
+     meta.textContent=u.expiresAt?((Date.now()>=new Date(u.expiresAt).getTime()?'EXPIRADO em ':'Expira em ')+new Date(u.expiresAt).toLocaleString('pt-BR')):'Prazo não definido';
      info.append(name,meta);
 
      const actions=document.createElement('div');
@@ -459,6 +507,12 @@ addPaymentRow();
      change.className='button';
      change.textContent='Alterar senha';
      change.addEventListener('click',()=>openPasswordChange(u.username));
+
+     const edit=document.createElement('button');
+     edit.type='button';
+     edit.className='button';
+     edit.textContent='Editar';
+     edit.addEventListener('click',()=>openEditUser(u.username));
 
      const del=document.createElement('button');
      del.type='button';
@@ -472,7 +526,7 @@ addPaymentRow();
        renderUsers();
        toast('Usuário excluído.');
      });
-     actions.append(change,del);
+     actions.append(edit,change,del);
      row.append(info,actions);
      list.append(row);
    });
@@ -494,14 +548,14 @@ addPaymentRow();
    if(newPassword!==confirmPassword){err.textContent='As senhas não coincidem.';return;}
    try{
      if(admin&&normalized(username)===normalized(admin.username)){
-       const updatedAdmin={...admin,password:newPassword};
+       const updatedAdmin={...admin,password:hashPw(newPassword)};
        localStorage.setItem(AUTH_KEY,JSON.stringify(updatedAdmin));
        admin=updatedAdmin;
      }else{
        const user=users.find(u=>normalized(u.username)===normalized(username));
        if(!user){err.textContent='Usuário não encontrado.';return;}
        const oldPassword=user.password;
-       user.password=newPassword;
+       user.password=hashPw(newPassword);
        try{saveUsers();}catch(saveError){user.password=oldPassword;throw saveError;}
      }
      hidePasswordChange();
@@ -511,29 +565,62 @@ addPaymentRow();
      err.textContent='Não foi possível salvar a nova senha neste navegador.';
    }
  });
+ const editForm=document.getElementById('ckrEditUserForm');
+ const pad2=n=>String(n).padStart(2,'0');
+ const toLocalInput=iso=>{const d=new Date(iso);return isNaN(d)?'':`${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;};
+ function hideEditUser(){editForm.hidden=true;editForm.style.display='none';editForm.reset();document.getElementById('ckrEditError').textContent='';delete editForm.dataset.username;}
+ function openEditUser(username){
+   if(!currentUser||currentUser.role!=='admin'){toast('Somente o ADMIN pode editar usuários.',true);return;}
+   const u=users.find(x=>normalized(x.username)===normalized(username));if(!u)return;
+   hidePasswordChange();
+   editForm.dataset.username=u.username;
+   document.getElementById('ckrEditTarget').textContent=u.username;
+   document.getElementById('ckrEditUsername').value=u.username;
+   document.getElementById('ckrEditExpiry').value=toLocalInput(u.expiresAt);
+   document.getElementById('ckrEditError').textContent='';
+   editForm.hidden=false;editForm.style.display='grid';
+   document.getElementById('ckrEditUsername').focus();
+ }
+ document.getElementById('ckrCancelEditUser').addEventListener('click',hideEditUser);
+ document.querySelectorAll('[data-renew-days]').forEach(btn=>btn.addEventListener('click',()=>{document.getElementById('ckrEditExpiry').value=toLocalInput(new Date(Date.now()+Number(btn.dataset.renewDays)*86400000).toISOString());}));
+ editForm.addEventListener('submit',e=>{
+   e.preventDefault();
+   const err=document.getElementById('ckrEditError');err.textContent='';
+   if(!currentUser||currentUser.role!=='admin'){err.textContent='Somente o ADMIN pode editar usuários.';return;}
+   const old=editForm.dataset.username,u=users.find(x=>normalized(x.username)===normalized(old));
+   if(!u){err.textContent='Usuário não encontrado.';return;}
+   const name=document.getElementById('ckrEditUsername').value.trim(),exp=document.getElementById('ckrEditExpiry').value;
+   if(name.length<3){err.textContent='O usuário precisa ter pelo menos 3 caracteres.';return;}
+   if(!exp||isNaN(new Date(exp))){err.textContent='Informe a data e hora de validade.';return;}
+   if(normalized(name)===normalized(admin.username)||users.some(x=>x!==u&&normalized(x.username)===normalized(name))){err.textContent='Esse nome de usuário já está cadastrado.';return;}
+   const backup={username:u.username,expiresAt:u.expiresAt};
+   u.username=name;u.expiresAt=new Date(exp).toISOString();
+   try{saveUsers();hideEditUser();renderUsers();toast('Usuário atualizado.');}catch(ex){u.username=backup.username;u.expiresAt=backup.expiresAt;err.textContent='Não foi possível salvar neste navegador.';}
+ });
  function openUsers(){
    if(!currentUser||currentUser.role!=='admin'){
      toast('Somente o ADMIN pode gerenciar usuários.',true);
      return;
    }
-   hidePasswordChange();
+   hidePasswordChange();hideEditUser();
    document.getElementById('ckrUsersError').textContent='';
    document.getElementById('ckrCreateUserForm').reset();
    renderUsers();
    usersModal.hidden=false;
    document.getElementById('ckrNewUsername').focus();
  }
- function closeUsers(){hidePasswordChange();usersModal.hidden=true;}
+ function closeUsers(){hidePasswordChange();hideEditUser();usersModal.hidden=true;}
  manageButton.addEventListener('click',openUsers);if(manageSidebar)manageSidebar.addEventListener('click',openUsers);document.getElementById('ckrCloseUsers').addEventListener('click',closeUsers);usersModal.addEventListener('click',e=>{if(e.target===usersModal)closeUsers();});
  document.getElementById('ckrCreateUserForm').addEventListener('submit',e=>{e.preventDefault();const err=document.getElementById('ckrUsersError');err.textContent='';if(!currentUser||currentUser.role!=='admin'){err.textContent='Somente o ADMIN pode criar usuários.';return;}
    const username=document.getElementById('ckrNewUsername').value.trim(),password=document.getElementById('ckrNewPassword').value,confirmPassword=document.getElementById('ckrNewPasswordConfirm').value;
    if(username.length<3){err.textContent='O usuário precisa ter pelo menos 3 caracteres.';return;}if(password.length<6){err.textContent='A senha precisa ter pelo menos 6 caracteres.';return;}if(password!==confirmPassword){err.textContent='As senhas não coincidem.';return;}
    if(normalized(username)===normalized(admin.username)||users.some(u=>normalized(u.username)===normalized(username))){err.textContent='Esse nome de usuário já está cadastrado.';return;}
-   const created=Date.now(), expiry=new Date(created+182.5*24*60*60*1000).toISOString();users.push({username,password,createdAt:new Date(created).toISOString(),expiresAt:expiry});
-   try{saveUsers();renderUsers();e.target.reset();toast('Usuário criado. O acesso expira em 182,5 dias.');}catch(ex){users.pop();err.textContent='Não foi possível salvar o usuário neste navegador.';}
+   const days=Number(document.getElementById('ckrNewValidity').value)||182.5;
+   const created=Date.now(), expiry=new Date(created+days*24*60*60*1000).toISOString();users.push({username,password:hashPw(password),createdAt:new Date(created).toISOString(),expiresAt:expiry});
+   try{saveUsers();renderUsers();e.target.reset();toast('Usuário criado. Acesso até '+new Date(expiry).toLocaleDateString('pt-BR')+'.');}catch(ex){users.pop();err.textContent='Não foi possível salvar o usuário neste navegador.';}
  });
  if(!admin||!admin.username||!admin.password){showSetup();}
- else if(sessionStorage.getItem(SESSION_KEY)){try{const sess=JSON.parse(sessionStorage.getItem(SESSION_KEY));const u=getValidUser(sess.username, sess.role==='admin'?admin.password:(users.find(x=>normalized(x.username)===normalized(sess.username))||{}).password);if(u&&!u.expired)enter(u);else{sessionStorage.removeItem(SESSION_KEY);showLogin();}}catch(e){showLogin();}}
+ else if(sessionStorage.getItem(SESSION_KEY)){try{const sess=JSON.parse(sessionStorage.getItem(SESSION_KEY));let u=null;if(sess.role==='admin'&&normalized(sess.username)===normalized(admin.username))u={username:admin.username,role:'admin'};else{const f=users.find(x=>normalized(x.username)===normalized(sess.username));if(f&&!(f.expiresAt&&Date.now()>=new Date(f.expiresAt).getTime()))u={username:f.username,role:'usuario'};}if(u)enter(u);else{sessionStorage.removeItem(SESSION_KEY);showLogin();}}catch(e){showLogin();}}
  else{showLogin();}
  setupForm.addEventListener('submit',e=>{e.preventDefault();setupError.textContent='';const username=document.getElementById('ckrSetupUser').value.trim(),password=document.getElementById('ckrSetupPassword').value,confirmPassword=document.getElementById('ckrSetupConfirm').value;if(username.length<3){setupError.textContent='O usuário deve ter pelo menos 3 caracteres.';return;}if(password.length<6){setupError.textContent='A senha precisa ter pelo menos 6 caracteres.';return;}if(password!==confirmPassword){setupError.textContent='As senhas não são iguais.';return;}try{localStorage.setItem(AUTH_KEY,JSON.stringify({username,password}));admin={username,password};enter({username,role:'admin'});toast('Administrador criado neste navegador.');}catch(err){setupError.textContent='Não foi possível salvar as credenciais neste navegador.';}});
  loginForm.addEventListener('submit',e=>{e.preventDefault();error.textContent='';const username=userInput.value.trim(),password=passInput.value,u=getValidUser(username,password);if(u&&u.expired){error.textContent='O prazo de uso deste usuário terminou. Solicite ao ADMIN um novo acesso.';passInput.value='';return;}if(u){passInput.value='';enter(u);}else{error.textContent='Usuário ou senha incorretos.';passInput.value='';passInput.focus();}});
