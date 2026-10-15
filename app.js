@@ -11,17 +11,72 @@ function id(){return (crypto&&crypto.randomUUID)?crypto.randomUUID():`${Date.now
 function money(n){return Number(n||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});}
 function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function toast(message,error=false){const el=document.getElementById('toast');el.textContent=message;el.classList.toggle('error',error);el.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove('show'),3200);}
+
+// BACKUP MENSAL AUTOMÁTICO POR E-MAIL (serviço remoto configurado pelo administrador)
+// Cole abaixo a URL pública do Cloudflare Worker depois de publicá-lo.
+const MONTHLY_BACKUP_ENDPOINT = 'COLE_AQUI_A_URL_DO_CLOUDFLARE_WORKER';
+const MONTHLY_BACKUP_STATUS_KEY = 'conceito_backup_mensal_status_v1';
+const MONTHLY_BACKUP_EMAIL = 'infane10@gmail.com';
+function detectarDispositivoBackup(){
+  const ua = navigator.userAgent || '';
+  const mobile = /Android|iPhone|iPad|iPod|Mobile|IEMobile|Opera Mini/i.test(ua) || (navigator.maxTouchPoints > 1 && Math.min(screen.width || 9999, screen.height || 9999) < 800);
+  return mobile ? 'Celular' : 'PC';
+}
+function chaveMesBackup(){
+  const agora = new Date();
+  return `${agora.getFullYear()}-${String(agora.getMonth()+1).padStart(2,'0')}`;
+}
+function bytesParaBase64Utf8(texto){
+  const bytes = new TextEncoder().encode(texto);
+  let binario = '';
+  const bloco = 0x8000;
+  for(let i=0;i<bytes.length;i+=bloco) binario += String.fromCharCode(...bytes.subarray(i,i+bloco));
+  return btoa(binario);
+}
+async function tentarBackupMensalAutomatico(){
+  if(!navigator.onLine) return;
+  if(!MONTHLY_BACKUP_ENDPOINT || MONTHLY_BACKUP_ENDPOINT.startsWith('COLE_AQUI_')) return;
+  const mes = chaveMesBackup();
+  let enviado = {};
+  try { enviado = JSON.parse(localStorage.getItem(MONTHLY_BACKUP_STATUS_KEY) || '{}') || {}; } catch(_) { enviado = {}; }
+  if(enviado[mes] === true) return;
+  const dispositivo = detectarDispositivoBackup();
+  const nomeArquivo = `Conceito_${dispositivo}_${mes}.json`;
+  const conteudo = JSON.stringify({...data, exportedAt:new Date().toISOString(), backupMonth:mes, device:dispositivo}, null, 2);
+  try {
+    const resposta = await fetch(MONTHLY_BACKUP_ENDPOINT, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({fileName:nomeArquivo, contentBase64:bytesParaBase64Utf8(conteudo), month:mes, device:dispositivo})
+    });
+    let retorno = {};
+    try { retorno = await resposta.json(); } catch(_) {}
+    if(!resposta.ok || retorno.success !== true) throw new Error(retorno.error || `HTTP ${resposta.status}`);
+    enviado[mes] = true;
+    localStorage.setItem(MONTHLY_BACKUP_STATUS_KEY, JSON.stringify(enviado));
+    toast(`Backup mensal enviado para ${MONTHLY_BACKUP_EMAIL} (${dispositivo}).`);
+  } catch(err) {
+    // Não marcar o mês como enviado: haverá nova tentativa na próxima abertura.
+    console.warn('Backup mensal do Conceito não foi enviado; tentará novamente na próxima abertura.', err);
+    toast('Backup mensal não enviado. O sistema tentará novamente na próxima abertura.', true);
+  }
+}
+function agendarBackupMensalAutomatico(){
+  // Espera o login e a renderização inicial; só envia quando o site está aberto e online.
+  setTimeout(()=>{tentarBackupMensalAutomatico();}, 1800);
+  window.addEventListener('online', ()=>{tentarBackupMensalAutomatico();}, {once:true});
+}
+
 function productById(pid){return data.products.find(p=>p.id===pid);}
 function recordMovement(type,p,qty,total,details='',extra={}){data.movements.unshift({id:id(),type,productId:p.id,productName:p.name,quantity:Number(qty),total:Number(total||0),details,...extra,date:new Date().toISOString()});}
 function dateText(d){return new Date(d).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'});}
-function goTo(name){document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active',p.id===`panel-${name}`));document.querySelectorAll('.nav-link').forEach(b=>b.classList.toggle('active',b.dataset.panel===name));const selected=document.querySelector(`.nav-link[data-panel="${name}"]`);document.getElementById('pageBreadcrumb').textContent=selected?selected.textContent.trim().replace(/\d+$/,'').trim():'Visão geral';document.getElementById('sidebar').classList.remove('open');window.scrollTo({top:0,behavior:'smooth'});}
+function goTo(name){if(name==='backup'&&document.body.dataset.ckrRole!=='admin'){toast('Somente o ADMIN pode acessar Backup e transferência.',true);return;}document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active',p.id===`panel-${name}`));document.querySelectorAll('.nav-link').forEach(b=>b.classList.toggle('active',b.dataset.panel===name));const selected=document.querySelector(`.nav-link[data-panel="${name}"]`);document.getElementById('pageBreadcrumb').textContent=selected?selected.textContent.trim().replace(/\d+$/,'').trim():'Visão geral';document.getElementById('sidebar').classList.remove('open');window.scrollTo({top:0,behavior:'smooth'});}
 document.querySelectorAll('[data-panel]').forEach(b=>b.addEventListener('click',()=>goTo(b.dataset.panel)));
 document.querySelectorAll('[data-go]').forEach(b=>b.addEventListener('click',()=>goTo(b.dataset.go)));
 document.getElementById('mobileMenu').addEventListener('click',()=>document.getElementById('sidebar').classList.toggle('open'));
 document.getElementById('closeNotice').addEventListener('click',()=>document.querySelector('.notice').style.display='none');
 document.getElementById('todayLabel').textContent=new Date().toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'short',year:'numeric'});
 
-function renderAll(){renderStats();renderProducts();renderSelects();renderHistory();renderRecent();renderCustomers();}
+function renderAll(){renderStats();renderProducts();renderSelects();renderHistory();renderRecent();renderCustomers();renderDashboardInsights();renderDateReport();}
 function renderStats(){
  document.getElementById('totalProdutos').textContent=data.products.length;
  document.getElementById('menuProdutos').textContent=data.products.length;
@@ -29,6 +84,20 @@ function renderStats(){
  document.getElementById('totalUnidades').textContent=data.products.reduce((s,p)=>s+Number(p.stock||0),0);
  document.getElementById('totalVendas').textContent=data.movements.filter(m=>m.type==='venda').length;
  document.getElementById('valorEstoque').textContent=money(data.products.reduce((s,p)=>s+Number(p.stock||0)*Number(p.cost||0),0));
+ // O lucro só usa vendas que guardam o custo real da época da venda.
+ // Vendas antigas sem esse registro não podem ser recalculadas com segurança.
+ const vendas=data.movements.filter(m=>m.type==='venda');
+ const vendasComCusto=vendas.filter(m=>m.costTotal!==undefined && Number.isFinite(Number(m.costTotal)));
+ const receitaHistorica=vendasComCusto.reduce((s,m)=>s+Number(m.total||0),0);
+ const custoHistorico=vendasComCusto.reduce((s,m)=>s+Number(m.costTotal||0),0);
+ const lucro=Math.round((receitaHistorica-custoHistorico)*100)/100;
+ const margem=receitaHistorica>0?(lucro/receitaHistorica)*100:0;
+ const lucroEl=document.getElementById('lucroTotal');
+ const margemEl=document.getElementById('margemLucro');
+ const notaEl=document.getElementById('lucroHistoricoNota');
+ if(lucroEl)lucroEl.textContent=money(lucro);
+ if(margemEl)margemEl.textContent=`${margem.toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1})}%`;
+ if(notaEl){const antigas=vendas.length-vendasComCusto.length;notaEl.textContent=antigas>0?`${antigas} venda(s) antiga(s) sem custo histórico não incluída(s)`:'Calculado pelo custo registrado em cada venda';}
 }
 function renderProducts(){
  const q=document.getElementById('buscaProduto').value.trim().toLowerCase();
@@ -52,6 +121,39 @@ function renderRecent(){
  const list=data.movements.slice(0,5);
  document.getElementById('recentRows').innerHTML=list.map(m=>`<tr><td><span class="pill ${m.type}">${m.type==='venda'?'Venda':'Entrada'}</span></td><td><span class="product-name">${esc(m.productName)}</span></td><td>${m.type==='venda'?'−':'+'}${Number(m.quantity)}</td><td>${money(m.total)}</td><td>${esc(dateText(m.date))}</td></tr>`).join('');
  document.getElementById('recentEmpty').style.display=list.length?'none':'block';
+}
+
+function localDateKey(value){const d=new Date(value);if(Number.isNaN(d.getTime()))return '';return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
+function renderDashboardInsights(){
+ const now=new Date(),days=[];
+ for(let i=6;i>=0;i--){const d=new Date(now);d.setHours(0,0,0,0);d.setDate(d.getDate()-i);const key=localDateKey(d);const total=data.movements.filter(m=>m.type==='venda'&&localDateKey(m.date)===key).reduce((s,m)=>s+Number(m.total||0),0);days.push({key,label:d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}),total});}
+ const max=Math.max(1,...days.map(x=>x.total)),w=700,h=250,left=58,right=18,top=22,bottom=42,plotW=w-left-right,plotH=h-top-bottom;
+ const x=i=>left+(days.length===1?plotW/2:i*plotW/(days.length-1));
+ const y=v=>top+plotH-(v/max)*plotH;
+ const grid=[0,.25,.5,.75,1].map(fr=>{const val=max*fr,yy=top+plotH-plotH*fr;return `<line x1="${left}" y1="${yy}" x2="${w-right}" y2="${yy}" stroke="#e8edf5" stroke-width="1"/><text x="${left-10}" y="${yy+4}" text-anchor="end" fill="#8290a5" font-size="11">${fr===0?'R$ 0':esc(shortMoney(val))}</text>`}).join('');
+ const points=days.map((d,i)=>`${x(i)},${y(d.total)}`).join(' ');
+ const area=`${x(0)},${top+plotH} ${points} ${x(days.length-1)},${top+plotH}`;
+ const marks=days.map((d,i)=>`<circle cx="${x(i)}" cy="${y(d.total)}" r="5" fill="#fff" stroke="#3568f5" stroke-width="3"><title>${d.label}: ${esc(money(d.total))}</title></circle><text x="${x(i)}" y="${h-15}" text-anchor="middle" fill="#74839a" font-size="11">${d.label}</text>`).join('');
+ document.getElementById('dashboardSalesChart').innerHTML=`<svg class="sales-line-svg" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-label="Vendas por dia">${grid}<polygon points="${area}" fill="#3568f5" opacity=".09"/><polyline points="${points}" fill="none" stroke="#3568f5" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>${marks}</svg>`;
+ document.getElementById('dashboardVendasTotal').textContent=money(days.reduce((s,d)=>s+d.total,0));
+ const zero=data.products.filter(p=>Number(p.stock)<=0).length,low=data.products.filter(p=>Number(p.stock)>0&&Number(p.stock)<=2).length,ok=data.products.filter(p=>Number(p.stock)>2).length,total=data.products.length;
+ document.getElementById('estoqueZerado').textContent=zero;document.getElementById('estoqueBaixo').textContent=low;document.getElementById('estoqueEmDia').textContent=ok;
+ document.getElementById('stockDonutTotal').textContent=total;
+ const okPct=total?ok/total*100:0,lowPct=total?low/total*100:0,zeroPct=total?zero/total*100:0;
+ document.getElementById('stockDonut').style.background=total?`conic-gradient(#16a36a 0 ${okPct}%, #f59e0b ${okPct}% ${okPct+lowPct}%, #ef4444 ${okPct+lowPct}% 100%)`:'#e8edf5';
+}
+function shortMoney(n){const v=Number(n||0);if(v>=1000000)return `R$ ${(v/1000000).toLocaleString('pt-BR',{maximumFractionDigits:1})} mi`;if(v>=1000)return `R$ ${(v/1000).toLocaleString('pt-BR',{maximumFractionDigits:1})} mil`;return `R$ ${Math.round(v).toLocaleString('pt-BR')}`;}
+
+function getDateReportRows(){
+ const start=document.getElementById('relatorioDataInicio').value,end=document.getElementById('relatorioDataFim').value,type=document.getElementById('relatorioTipo').value;
+ return data.movements.filter(m=>{const day=localDateKey(m.date);return (!start||day>=start)&&(!end||day<=end)&&(type==='todos'||m.type===type);}).sort((a,b)=>new Date(b.date)-new Date(a.date));
+}
+function renderDateReport(){
+ const rows=getDateReportRows(),sales=rows.filter(m=>m.type==='venda').reduce((s,m)=>s+Number(m.total||0),0),entries=rows.filter(m=>m.type==='entrada').reduce((s,m)=>s+Number(m.total||0),0);
+ const el=id=>document.getElementById(id);if(!el('relatorioRows'))return;
+ el('relatorioTotalVendas').textContent=money(sales);el('relatorioTotalEntradas').textContent=money(entries);el('relatorioQtd').textContent=rows.length;
+ const start=el('relatorioDataInicio').value,end=el('relatorioDataFim').value;el('relatorioDescricao').textContent=`${start?new Date(start+'T12:00:00').toLocaleDateString('pt-BR'):'Desde o início'} até ${end?new Date(end+'T12:00:00').toLocaleDateString('pt-BR'):'hoje'} · ${rows.length} registro(s)`;
+ el('relatorioRows').innerHTML=rows.map(m=>`<tr><td>${esc(dateText(m.date))}</td><td><span class="pill ${m.type}">${m.type==='venda'?'Venda':'Entrada'}</span></td><td><span class="product-name">${esc(m.productName)}</span></td><td>${Number(m.quantity)}</td><td>${money(m.total)}</td><td>${esc([m.client?`Cliente: ${m.client}`:'',m.details||''].filter(Boolean).join(' · ')||'—')}</td></tr>`).join('');el('relatorioVazio').style.display=rows.length?'none':'block';
 }
 
 let editingCustomerId = null;
@@ -171,13 +273,195 @@ document.getElementById('formVenda').addEventListener('submit',e=>{
  if(Math.abs(received-totals.total)>0.009){toast(`Os pagamentos devem somar exatamente ${money(totals.total)}. Saldo: ${money(totals.total-received)}.`,true);return;}
  const paymentDetails=payments.map(x=>x.method==='Cartão de crédito'?`${x.method}: ${money(x.amount)} em ${x.installments}x (${x.responsible==='fabrica'?'fábrica':'loja'})`:`${x.method}: ${money(x.amount)}`).join(' | ');
  const details=[client?`Cliente: ${client}`:'',`Subtotal: ${money(totals.subtotal)}`,totals.discountCash?`Desconto: ${money(totals.discountCash)} + ${totals.discountPercent}%`:'',`Pagamentos: ${paymentDetails}`,note].filter(Boolean).join(' · ');
- p.stock-=qty;recordMovement('venda',p,qty,totals.total,details,{client,payments,subtotal:totals.subtotal,discountCash:totals.discountCash,discountPercent:totals.discountPercent});
+ const custoUnitarioVenda=Math.round(Number(p.cost||0)*100)/100;
+ const custoTotalVenda=Math.round(custoUnitarioVenda*qty*100)/100;
+ const lucroVenda=Math.round((Number(totals.total||0)-custoTotalVenda)*100)/100;
+ p.stock-=qty;recordMovement('venda',p,qty,totals.total,details,{client,payments,subtotal:totals.subtotal,discountCash:totals.discountCash,discountPercent:totals.discountPercent,unitPrice:price,unitCost:custoUnitarioVenda,costTotal:custoTotalVenda,profit:lucroVenda});
  if(saveData()){e.target.reset();document.getElementById('linhasPagamento').innerHTML='';addPaymentRow();updateSalePreview();toast('Venda registrada e estoque atualizado.');}
 });
 document.getElementById('filtroTipo').addEventListener('change',renderHistory);
 document.getElementById('limparHistorico').addEventListener('click',()=>{if(!confirm('Apagar o histórico? Os produtos e quantidades em estoque serão mantidos.'))return;data.movements=[];if(saveData())toast('Histórico apagado.');});
-document.getElementById('fazerBackup').addEventListener('click',()=>{const blob=new Blob([JSON.stringify({...data,exportedAt:new Date().toISOString()},null,2)],{type:'application/json;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`ckr-backup-${new Date().toISOString().slice(0,10)}.json`;document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);toast('Backup exportado. Guarde o arquivo em local seguro.');});
-document.getElementById('restaurarBackup').addEventListener('click',async()=>{const file=document.getElementById('arquivoBackup').files[0];if(!file){toast('Escolha um arquivo JSON primeiro.',true);return;}if(!confirm('A restauração vai substituir os dados deste dispositivo. Deseja continuar?'))return;try{const imported=JSON.parse(await file.text());if(!Array.isArray(imported.products)||!Array.isArray(imported.movements))throw Error('Formato');for(const p of imported.products){if(!p.id||!String(p.name||'').trim()||!Number.isFinite(Number(p.stock))||Number(p.stock)<0)throw Error('Produto');}data={version:3,products:imported.products,movements:imported.movements,customers:Array.isArray(imported.customers)?imported.customers:[]};if(saveData()){document.getElementById('arquivoBackup').value='';resetProductForm();toast('Backup restaurado com sucesso.');}}catch(err){toast('Arquivo inválido ou incompatível com o CKR Web V2.',true);}});
-document.getElementById('apagarTudo').addEventListener('click',()=>{if(!confirm('Isso apagará todos os produtos, clientes, entradas e vendas deste navegador. Continuar?'))return;if(!confirm('Confirme mais uma vez. Só será possível recuperar com backup.'))return;data=emptyData();if(saveData()){resetProductForm();toast('Dados locais apagados.');}});
+document.getElementById('fazerBackup').addEventListener('click',()=>{if(document.body.dataset.ckrRole!=='admin'){toast('Somente o ADMIN pode fazer backup.',true);return;}const blob=new Blob([JSON.stringify({...data,exportedAt:new Date().toISOString()},null,2)],{type:'application/json;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`conceito-backup-${new Date().toISOString().slice(0,10)}.json`;document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);toast('Backup exportado. Guarde o arquivo em local seguro.');});
+document.getElementById('restaurarBackup').addEventListener('click',async()=>{if(document.body.dataset.ckrRole!=='admin'){toast('Somente o ADMIN pode restaurar backup.',true);return;}const file=document.getElementById('arquivoBackup').files[0];if(!file){toast('Escolha um arquivo JSON primeiro.',true);return;}if(!confirm('A restauração vai substituir os dados deste dispositivo. Deseja continuar?'))return;try{const imported=JSON.parse(await file.text());if(!Array.isArray(imported.products)||!Array.isArray(imported.movements))throw Error('Formato');for(const p of imported.products){if(!p.id||!String(p.name||'').trim()||!Number.isFinite(Number(p.stock))||Number(p.stock)<0)throw Error('Produto');}data={version:3,products:imported.products,movements:imported.movements,customers:Array.isArray(imported.customers)?imported.customers:[]};if(saveData()){document.getElementById('arquivoBackup').value='';resetProductForm();toast('Backup restaurado com sucesso.');}}catch(err){toast('Arquivo inválido ou incompatível com o Conceito Web V2.',true);}});
+document.getElementById('apagarTudo').addEventListener('click',()=>{if(document.body.dataset.ckrRole!=='admin'){toast('Somente o ADMIN pode apagar os dados.',true);return;}if(!confirm('Isso apagará todos os produtos, clientes, entradas e vendas deste navegador. Continuar?'))return;if(!confirm('Confirme mais uma vez. Só será possível recuperar com backup.'))return;data=emptyData();if(saveData()){resetProductForm();toast('Dados locais apagados.');}});
+document.getElementById('gerarRelatorio').addEventListener('click',()=>{const a=document.getElementById('relatorioDataInicio').value,b=document.getElementById('relatorioDataFim').value;if(a&&b&&a>b){toast('A data inicial não pode ser posterior à data final.',true);return;}renderDateReport();});
+['relatorioDataInicio','relatorioDataFim','relatorioTipo'].forEach(k=>document.getElementById(k).addEventListener('change',renderDateReport));
+document.getElementById('exportarRelatorioCsv').addEventListener('click',()=>{const rows=getDateReportRows();const cell=v=>'"'+String(v??'').replace(/"/g,'""')+'"';const lines=[['Data e hora','Tipo','Produto','Quantidade','Valor','Cliente','Detalhes'].map(cell).join(';'),...rows.map(m=>[dateText(m.date),m.type==='venda'?'Venda':'Entrada',m.productName,m.quantity,Number(m.total||0).toFixed(2).replace('.',','),m.client||'',m.details||''].map(cell).join(';'))];const blob=new Blob(['\ufeff'+lines.join('\r\n')],{type:'text/csv;charset=utf-8;'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`conceito-relatorio-${document.getElementById('relatorioDataInicio').value||'inicio'}-${document.getElementById('relatorioDataFim').value||'hoje'}.csv`;document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);});
+document.getElementById('imprimirRelatorio').addEventListener('click',()=>{renderDateReport();window.print();});
+// Período padrão: mês atual
+const reportToday=new Date();document.getElementById('relatorioDataInicio').value=`${reportToday.getFullYear()}-${String(reportToday.getMonth()+1).padStart(2,'0')}-01`;document.getElementById('relatorioDataFim').value=localDateKey(reportToday);
 renderAll();
 addPaymentRow();
+
+
+// Login local com perfil ADMIN e usuários temporários. Não substitui autenticação no servidor.
+(function setupLocalLogin(){
+ const AUTH_KEY='ckr_web_local_admin_v1', SESSION_KEY='ckr_web_local_session_v1', USERS_KEY='ckr_web_local_users_v1';
+ const gate=document.getElementById('ckrAuthGate'), shell=document.getElementById('ckrAppShell');
+ const loginForm=document.getElementById('ckrLoginForm'), setupForm=document.getElementById('ckrSetupForm'), showSetupButton=document.getElementById('ckrShowSetup');
+ const desc=document.getElementById('authDescription'), error=document.getElementById('ckrAuthError'), setupError=document.getElementById('ckrSetupError');
+ const userInput=document.getElementById('ckrLoginUser'), passInput=document.getElementById('ckrLoginPassword');
+ const manageButton=document.getElementById('ckrManageUsers'), manageSidebar=document.getElementById('ckrManageUsersSidebar'), usersModal=document.getElementById('ckrUsersModal');
+ let admin=null, users=[], currentUser=null;
+ try{admin=JSON.parse(localStorage.getItem(AUTH_KEY)||'null');}catch(e){admin=null;}
+ try{users=JSON.parse(localStorage.getItem(USERS_KEY)||'[]');if(!Array.isArray(users))users=[];}catch(e){users=[];}
+ const saveUsers=()=>localStorage.setItem(USERS_KEY,JSON.stringify(users));
+ const normalized=s=>String(s||'').trim().toLowerCase();
+ function showLogin(){gate.hidden=false;shell.hidden=true;loginForm.hidden=false;setupForm.hidden=true;showSetupButton.hidden=!!(admin&&admin.username&&admin.password);desc.textContent='Informe seu usuário e senha para continuar.';error.textContent='';userInput.focus();}
+ function showSetup(){gate.hidden=false;shell.hidden=true;loginForm.hidden=true;setupForm.hidden=false;showSetupButton.hidden=true;desc.textContent='Crie o usuário ADMIN e uma senha para este navegador.';setupError.textContent='';document.getElementById('ckrSetupUser').focus();}
+ showSetupButton.addEventListener('click',()=>{showSetup();});
+ function updateExpiryStatus(){const el=document.getElementById('ckrExpiryStatus');if(!el)return;if(!currentUser||currentUser.role==='admin'){el.hidden=true;el.textContent='';return;}const found=users.find(u=>normalized(u.username)===normalized(currentUser.username));if(!found||!found.expiresAt){el.hidden=true;el.textContent='';return;}const remaining=new Date(found.expiresAt).getTime()-Date.now();if(remaining<=0){el.textContent='◷ Acesso expirado';el.hidden=false;el.classList.add('expired');return;}const days=Math.ceil(remaining/(24*60*60*1000));el.textContent='◷ '+days+' '+(days===1?'dia':'dias');el.hidden=false;el.classList.remove('expired');}
+ function enter(user){currentUser=user;document.body.dataset.ckrRole=user.role;sessionStorage.setItem(SESSION_KEY,JSON.stringify({username:user.username,role:user.role}));gate.hidden=true;shell.hidden=false;document.getElementById('ckrUserAvatar').textContent=(user.username||'AD').trim().slice(0,2).toUpperCase();manageButton.hidden=user.role!=='admin';if(manageSidebar)manageSidebar.hidden=user.role!=='admin';document.querySelectorAll('[data-panel="backup"],[data-go="backup"]').forEach(el=>{el.hidden=user.role!=='admin';});updateExpiryStatus();const backupPanel=document.getElementById('panel-backup');if(backupPanel&&user.role!=='admin'&&backupPanel.classList.contains('active'))goTo('dashboard');agendarBackupMensalAutomatico();}
+ function getValidUser(username,password){
+   if(admin&&normalized(username)===normalized(admin.username)&&password===admin.password)return {username:admin.username,role:'admin'};
+   const found=users.find(u=>normalized(u.username)===normalized(username));
+   if(!found||found.password!==password)return null;
+   if(found.expiresAt && Date.now()>=new Date(found.expiresAt).getTime())return {expired:true,username:found.username};
+   return {username:found.username,role:'usuario'};
+ }
+ const changePasswordForm=document.getElementById('ckrChangePasswordForm');
+ function hidePasswordChange(){
+   changePasswordForm.hidden=true;
+   changePasswordForm.style.display='none';
+   changePasswordForm.reset();
+   document.getElementById('ckrPasswordError').textContent='';
+   delete changePasswordForm.dataset.username;
+ }
+ function openPasswordChange(username){
+   if(!currentUser||currentUser.role!=='admin'){
+     toast('Somente o ADMIN pode alterar senhas.',true);
+     return;
+   }
+   changePasswordForm.reset();
+   document.getElementById('ckrPasswordTarget').textContent=username;
+   document.getElementById('ckrPasswordError').textContent='';
+   changePasswordForm.dataset.username=username;
+   changePasswordForm.hidden=false;
+   changePasswordForm.style.display='grid';
+   document.getElementById('ckrAdminNewPassword').focus();
+ }
+ function renderUsers(){
+   const list=document.getElementById('ckrUsersList');
+   list.innerHTML='';
+
+   // A conta ADMIN também pode ter a senha redefinida por aqui.
+   if(admin&&admin.username){
+     const row=document.createElement('div');
+     row.className='users-row';
+     const info=document.createElement('div');
+     const name=document.createElement('strong');
+     name.textContent=admin.username+' (ADMIN)';
+     const meta=document.createElement('small');
+     meta.textContent='Administrador • acesso permanente';
+     info.append(name,meta);
+     const change=document.createElement('button');
+     change.type='button';
+     change.className='button';
+     change.textContent='Alterar senha';
+     change.addEventListener('click',()=>openPasswordChange(admin.username));
+     row.append(info,change);
+     list.append(row);
+   }
+
+   if(!users.length){
+     if(!admin) list.innerHTML='<div class="users-empty">Nenhum usuário cadastrado.</div>';
+     return;
+   }
+
+   users.forEach((u,i)=>{
+     const row=document.createElement('div');
+     row.className='users-row';
+     const info=document.createElement('div');
+     const name=document.createElement('strong');
+     name.textContent=u.username;
+     const meta=document.createElement('small');
+     meta.textContent=u.expiresAt?'Expira em '+new Date(u.expiresAt).toLocaleString('pt-BR'):'Prazo não definido';
+     info.append(name,meta);
+
+     const actions=document.createElement('div');
+     const change=document.createElement('button');
+     change.type='button';
+     change.className='button';
+     change.textContent='Alterar senha';
+     change.addEventListener('click',()=>openPasswordChange(u.username));
+
+     const del=document.createElement('button');
+     del.type='button';
+     del.className='button button-danger-light';
+     del.textContent='Excluir';
+     del.addEventListener('click',()=>{
+       if(currentUser?.role!=='admin')return;
+       if(!confirm('Excluir o usuário '+u.username+'?'))return;
+       users.splice(i,1);
+       saveUsers();
+       renderUsers();
+       toast('Usuário excluído.');
+     });
+     actions.append(change,del);
+     row.append(info,actions);
+     list.append(row);
+   });
+ }
+ document.getElementById('ckrCancelPasswordChange').addEventListener('click',hidePasswordChange);
+ changePasswordForm.addEventListener('submit',e=>{
+   e.preventDefault();
+   const err=document.getElementById('ckrPasswordError');
+   err.textContent='';
+   if(!currentUser||currentUser.role!=='admin'){
+     err.textContent='Somente o ADMIN pode alterar senhas.';
+     return;
+   }
+   const username=changePasswordForm.dataset.username;
+   const newPassword=document.getElementById('ckrAdminNewPassword').value;
+   const confirmPassword=document.getElementById('ckrAdminConfirmPassword').value;
+   if(!username){err.textContent='Selecione um usuário.';return;}
+   if(newPassword.length<6){err.textContent='A senha precisa ter pelo menos 6 caracteres.';return;}
+   if(newPassword!==confirmPassword){err.textContent='As senhas não coincidem.';return;}
+   try{
+     if(admin&&normalized(username)===normalized(admin.username)){
+       const updatedAdmin={...admin,password:newPassword};
+       localStorage.setItem(AUTH_KEY,JSON.stringify(updatedAdmin));
+       admin=updatedAdmin;
+     }else{
+       const user=users.find(u=>normalized(u.username)===normalized(username));
+       if(!user){err.textContent='Usuário não encontrado.';return;}
+       const oldPassword=user.password;
+       user.password=newPassword;
+       try{saveUsers();}catch(saveError){user.password=oldPassword;throw saveError;}
+     }
+     hidePasswordChange();
+     renderUsers();
+     toast('Senha alterada com sucesso.');
+   }catch(ex){
+     err.textContent='Não foi possível salvar a nova senha neste navegador.';
+   }
+ });
+ function openUsers(){
+   if(!currentUser||currentUser.role!=='admin'){
+     toast('Somente o ADMIN pode gerenciar usuários.',true);
+     return;
+   }
+   hidePasswordChange();
+   document.getElementById('ckrUsersError').textContent='';
+   document.getElementById('ckrCreateUserForm').reset();
+   renderUsers();
+   usersModal.hidden=false;
+   document.getElementById('ckrNewUsername').focus();
+ }
+ function closeUsers(){hidePasswordChange();usersModal.hidden=true;}
+ manageButton.addEventListener('click',openUsers);if(manageSidebar)manageSidebar.addEventListener('click',openUsers);document.getElementById('ckrCloseUsers').addEventListener('click',closeUsers);usersModal.addEventListener('click',e=>{if(e.target===usersModal)closeUsers();});
+ document.getElementById('ckrCreateUserForm').addEventListener('submit',e=>{e.preventDefault();const err=document.getElementById('ckrUsersError');err.textContent='';if(!currentUser||currentUser.role!=='admin'){err.textContent='Somente o ADMIN pode criar usuários.';return;}
+   const username=document.getElementById('ckrNewUsername').value.trim(),password=document.getElementById('ckrNewPassword').value,confirmPassword=document.getElementById('ckrNewPasswordConfirm').value;
+   if(username.length<3){err.textContent='O usuário precisa ter pelo menos 3 caracteres.';return;}if(password.length<6){err.textContent='A senha precisa ter pelo menos 6 caracteres.';return;}if(password!==confirmPassword){err.textContent='As senhas não coincidem.';return;}
+   if(normalized(username)===normalized(admin.username)||users.some(u=>normalized(u.username)===normalized(username))){err.textContent='Esse nome de usuário já está cadastrado.';return;}
+   const created=Date.now(), expiry=new Date(created+182.5*24*60*60*1000).toISOString();users.push({username,password,createdAt:new Date(created).toISOString(),expiresAt:expiry});
+   try{saveUsers();renderUsers();e.target.reset();toast('Usuário criado. O acesso expira em 182,5 dias.');}catch(ex){users.pop();err.textContent='Não foi possível salvar o usuário neste navegador.';}
+ });
+ if(!admin||!admin.username||!admin.password){showSetup();}
+ else if(sessionStorage.getItem(SESSION_KEY)){try{const sess=JSON.parse(sessionStorage.getItem(SESSION_KEY));const u=getValidUser(sess.username, sess.role==='admin'?admin.password:(users.find(x=>normalized(x.username)===normalized(sess.username))||{}).password);if(u&&!u.expired)enter(u);else{sessionStorage.removeItem(SESSION_KEY);showLogin();}}catch(e){showLogin();}}
+ else{showLogin();}
+ setupForm.addEventListener('submit',e=>{e.preventDefault();setupError.textContent='';const username=document.getElementById('ckrSetupUser').value.trim(),password=document.getElementById('ckrSetupPassword').value,confirmPassword=document.getElementById('ckrSetupConfirm').value;if(username.length<3){setupError.textContent='O usuário deve ter pelo menos 3 caracteres.';return;}if(password.length<6){setupError.textContent='A senha precisa ter pelo menos 6 caracteres.';return;}if(password!==confirmPassword){setupError.textContent='As senhas não são iguais.';return;}try{localStorage.setItem(AUTH_KEY,JSON.stringify({username,password}));admin={username,password};enter({username,role:'admin'});toast('Administrador criado neste navegador.');}catch(err){setupError.textContent='Não foi possível salvar as credenciais neste navegador.';}});
+ loginForm.addEventListener('submit',e=>{e.preventDefault();error.textContent='';const username=userInput.value.trim(),password=passInput.value,u=getValidUser(username,password);if(u&&u.expired){error.textContent='O prazo de uso deste usuário terminou. Solicite ao ADMIN um novo acesso.';passInput.value='';return;}if(u){passInput.value='';enter(u);}else{error.textContent='Usuário ou senha incorretos.';passInput.value='';passInput.focus();}});
+ setInterval(updateExpiryStatus,60000);
+ document.getElementById('ckrLogout').addEventListener('click',()=>{sessionStorage.removeItem(SESSION_KEY);currentUser=null;updateExpiryStatus();delete document.body.dataset.ckrRole;closeUsers();showLogin();passInput.value='';});
+})();
