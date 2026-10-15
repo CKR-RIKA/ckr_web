@@ -11,6 +11,69 @@ function loadData(){try{const raw=localStorage.getItem(STORAGE_KEY);if(!raw)retu
 function saveData(){try{localStorage.setItem(STORAGE_KEY,JSON.stringify(data));renderAll();return true;}catch(e){toast('Não foi possível salvar. Verifique o espaço disponível no navegador.',true);return false;}}
 function id(){return (crypto&&crypto.randomUUID)?crypto.randomUUID():`${Date.now()}-${Math.random().toString(16).slice(2)}`;}
 function money(n){return Number(n||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});}
+// Converte valores digitados em centavos automaticamente: 1050 -> 10,50.
+function parseMoneyInput(value){
+ const raw=String(value??'').trim();
+ if(!raw)return 0;
+ const cleaned=raw.replace(/R\$\s?/g,'').replace(/\s/g,'');
+ if(/[.,]/.test(cleaned)){
+  const normalized=cleaned.replace(/\./g,'').replace(',','.');
+  const n=Number(normalized);
+  return Number.isFinite(n)?Math.max(0,n):0;
+ }
+ const digits=cleaned.replace(/\D/g,'');
+ return digits?Number(digits)/100:0;
+}
+function parsePercentInput(value){
+ const raw=String(value??'').trim();
+ if(!raw)return 0;
+ const n=Number(raw.replace(/\./g,'').replace(',','.'));
+ return Number.isFinite(n)?Math.max(0,n):0;
+}
+function bindPercentInput(input){
+ if(!input)return;
+ input.addEventListener('focus',()=>{if(['0','0,00','0.00'].includes(input.value))input.value='';});
+ input.addEventListener('blur',()=>{
+  if(!input.value.trim())return;
+  const n=Math.min(100,parsePercentInput(input.value));
+  input.value=n.toLocaleString('pt-BR',{minimumFractionDigits:0,maximumFractionDigits:2});
+ });
+}
+function formatMoneyDigits(value){
+ const digits=String(value??'').replace(/\D/g,'');
+ if(!digits)return '';
+ const cents=Number(digits);
+ return (cents/100).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+}
+function bindMoneyMask(input, {percent=false}={}){
+ if(!input)return;
+ input.addEventListener('focus',()=>{
+  if(input.value==='0'||input.value==='0,00'||input.value==='0.00')input.value='';
+  input.select();
+ });
+ input.addEventListener('input',()=>{
+  const before=input.value;
+  if(/[.,]/.test(before)){
+   const normalized=before.replace(/\./g,'').replace(',','.');
+   const n=Number(normalized);
+   if(Number.isFinite(n)){
+    input.value=n.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+   }
+  }else{
+   input.value=formatMoneyDigits(before);
+  }
+  if(percent){
+   const n=parseMoneyInput(input.value);
+   if(n>100)input.value='100,00';
+  }
+  input.dispatchEvent(new Event('money-mask-updated',{bubbles:false}));
+ });
+ input.addEventListener('blur',()=>{
+  if(!input.value.trim())return;
+  const n=parseMoneyInput(input.value);
+  input.value=n.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+ });
+}
 function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function toast(message,error=false){const el=document.getElementById('toast');el.textContent=message;el.classList.toggle('error',error);el.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove('show'),3200);}
 function productById(pid){return data.products.find(p=>p.id===pid);}
@@ -178,10 +241,10 @@ document.getElementById('buscaProduto').addEventListener('input',renderProducts)
 document.getElementById('formEntrada').addEventListener('submit',e=>{e.preventDefault();const p=productById(document.getElementById('entradaProduto').value),qty=Number(document.getElementById('entradaQuantidade').value),note=document.getElementById('entradaObs').value.trim();if(!p){toast('Cadastre e selecione um produto primeiro.',true);return;}if(!Number.isInteger(qty)||qty<1){toast('Informe uma quantidade inteira maior que zero.',true);return;}p.stock+=qty;recordMovement('entrada',p,qty,p.cost*qty,note);if(saveData()){e.target.reset();toast('Entrada registrada com sucesso.');}});
 function cartSubtotal(){return Math.round(saleCart.reduce((sum,item)=>sum+item.quantity*item.price,0)*100)/100;}
 function saleTotals(){
- const subtotal=saleCart.length?cartSubtotal():Math.round(Number(document.getElementById('vendaQuantidade').value||0)*Number(document.getElementById('vendaPreco').value||0)*100)/100;
- const discountCash=Math.min(subtotal,Math.max(0,Number(document.getElementById('vendaDescontoReais').value||0)));
+ const subtotal=saleCart.length?cartSubtotal():Math.round(Number(document.getElementById('vendaQuantidade').value||0)*parseMoneyInput(document.getElementById('vendaPreco').value)*100)/100;
+ const discountCash=Math.min(subtotal,Math.max(0,parseMoneyInput(document.getElementById('vendaDescontoReais').value)));
  const afterCash=Math.max(0,subtotal-discountCash);
- const discountPercent=Math.min(100,Math.max(0,Number(document.getElementById('vendaDescontoPercentual').value||0)));
+ const discountPercent=Math.min(100,Math.max(0,parsePercentInput(document.getElementById('vendaDescontoPercentual').value)));
  const total=Math.round(afterCash*(1-discountPercent/100)*100)/100;
  return {subtotal,discountCash,discountPercent,total};
 }
@@ -196,7 +259,7 @@ function renderCart(){
 }
 document.getElementById('carrinhoLinhas').addEventListener('click',e=>{const b=e.target.closest('[data-cart-remove]');if(!b)return;saleCart.splice(Number(b.dataset.cartRemove),1);renderCart();});
 document.getElementById('adicionarAoCarrinho').addEventListener('click',()=>{
- const p=productById(document.getElementById('vendaProduto').value),qty=Number(document.getElementById('vendaQuantidade').value),price=Number(document.getElementById('vendaPreco').value);
+ const p=productById(document.getElementById('vendaProduto').value),qty=Number(document.getElementById('vendaQuantidade').value),price=parseMoneyInput(document.getElementById('vendaPreco').value);
  if(!p){toast('Selecione um produto.',true);return;}if(!Number.isInteger(qty)||qty<1){toast('Informe uma quantidade inteira maior que zero.',true);return;}if(!Number.isFinite(price)||price<0){toast('Informe um preço válido.',true);return;}
  const already=saleCart.filter(x=>x.productId===p.id).reduce((n,x)=>n+x.quantity,0);
  if(already+qty>Number(p.stock)){toast(`Estoque insuficiente para ${p.name}. Disponível: ${p.stock}.`,true);return;}
@@ -210,11 +273,11 @@ function updatePaymentRow(row){
 }
 function addPaymentRow(){
  const wrap=document.getElementById('linhasPagamento'),row=document.createElement('div');row.className='payment-row';
- row.innerHTML=`<div class="payment-row-main"><label class="field">Forma de pagamento<select class="pagamentoMetodo"><option value="">Selecione...</option><option>Pix</option><option>Dinheiro</option><option>Cartão de débito</option><option>Cartão de crédito</option><option>Transferência</option><option>Boleto</option><option>Outro</option></select></label><label class="field">Valor pago (R$)<input class="pagamentoValor" type="number" min="0" step="0.01" placeholder="0,00"></label><button type="button" class="payment-remove" aria-label="Remover pagamento" title="Remover pagamento">×</button></div><div class="payment-card-options" hidden><label class="field">Parcelas<input class="pagamentoParcelas" type="number" min="1" step="1" value="1"></label><label class="field">Parcelamento<select class="pagamentoResponsavel"><option value="loja">Pela loja</option><option value="fabrica">Pela fábrica</option></select></label></div>`;
- wrap.appendChild(row);row.querySelector('.pagamentoMetodo').addEventListener('change',()=>{updatePaymentRow(row);updatePaymentSummary();});row.querySelector('.pagamentoValor').addEventListener('input',updatePaymentSummary);row.querySelector('.pagamentoParcelas').addEventListener('input',updatePaymentSummary);row.querySelector('.pagamentoResponsavel').addEventListener('change',updatePaymentSummary);row.querySelector('.payment-remove').addEventListener('click',()=>{row.remove();updatePaymentSummary();});updatePaymentRow(row);updatePaymentSummary();
+ row.innerHTML=`<div class="payment-row-main"><label class="field">Forma de pagamento<select class="pagamentoMetodo"><option value="">Selecione...</option><option>Pix</option><option>Dinheiro</option><option>Cartão de débito</option><option>Cartão de crédito</option><option>Transferência</option><option>Boleto</option><option>Outro</option></select></label><label class="field">Valor pago (R$)<input class="pagamentoValor" type="text" inputmode="numeric" autocomplete="off" placeholder="0,00"></label><button type="button" class="payment-remove" aria-label="Remover pagamento" title="Remover pagamento">×</button></div><div class="payment-card-options" hidden><label class="field">Parcelas<input class="pagamentoParcelas" type="number" min="1" step="1" value="1"></label><label class="field">Parcelamento<select class="pagamentoResponsavel"><option value="loja">Pela loja</option><option value="fabrica">Pela fábrica</option></select></label></div>`;
+ wrap.appendChild(row);bindMoneyMask(row.querySelector('.pagamentoValor'));row.querySelector('.pagamentoMetodo').addEventListener('change',()=>{updatePaymentRow(row);updatePaymentSummary();});row.querySelector('.pagamentoValor').addEventListener('input',updatePaymentSummary);row.querySelector('.pagamentoParcelas').addEventListener('input',updatePaymentSummary);row.querySelector('.pagamentoResponsavel').addEventListener('change',updatePaymentSummary);row.querySelector('.payment-remove').addEventListener('click',()=>{row.remove();updatePaymentSummary();});updatePaymentRow(row);updatePaymentSummary();
 }
 function readPayments(){
- return [...document.querySelectorAll('.payment-row')].map(row=>({method:row.querySelector('.pagamentoMetodo').value,amount:Math.round(Number(row.querySelector('.pagamentoValor').value||0)*100)/100,installments:row.querySelector('.pagamentoMetodo').value==='Cartão de crédito'?Number(row.querySelector('.pagamentoParcelas').value||0):null,responsible:row.querySelector('.pagamentoMetodo').value==='Cartão de crédito'?row.querySelector('.pagamentoResponsavel').value:null})).filter(x=>x.method||x.amount>0);
+ return [...document.querySelectorAll('.payment-row')].map(row=>({method:row.querySelector('.pagamentoMetodo').value,amount:Math.round(parseMoneyInput(row.querySelector('.pagamentoValor').value)*100)/100,installments:row.querySelector('.pagamentoMetodo').value==='Cartão de crédito'?Number(row.querySelector('.pagamentoParcelas').value||0):null,responsible:row.querySelector('.pagamentoMetodo').value==='Cartão de crédito'?row.querySelector('.pagamentoResponsavel').value:null})).filter(x=>x.method||x.amount>0);
 }
 function updatePaymentSummary(){
  const total=saleTotals().total,payments=readPayments(),received=Math.round(payments.reduce((s,x)=>s+x.amount,0)*100)/100,remaining=Math.round((total-received)*100)/100;
@@ -225,10 +288,12 @@ function updatePaymentSummary(){
  else{notice.textContent='Pagamento completo: o total da venda foi quitado.';notice.classList.add('payment-ok');notice.classList.remove('payment-error');}
 }
 function updateSalePreview(){
- const p=productById(document.getElementById('vendaProduto').value);if(p&&document.activeElement!==document.getElementById('vendaPreco'))document.getElementById('vendaPreco').value=Number(p.price).toFixed(2);
+ const p=productById(document.getElementById('vendaProduto').value);if(p&&document.activeElement!==document.getElementById('vendaPreco'))document.getElementById('vendaPreco').value=Number(p.price).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
  const t=saleTotals();document.getElementById('subtotalVendaPreview').textContent=money(t.subtotal);document.getElementById('totalVendaPreview').textContent=money(t.total);updatePaymentSummary();
 }
 ['vendaProduto','vendaQuantidade','vendaPreco','vendaDescontoReais','vendaDescontoPercentual'].forEach(key=>document.getElementById(key).addEventListener(key==='vendaProduto'?'change':'input',updateSalePreview));
+['vendaPreco','vendaDescontoReais'].forEach(key=>bindMoneyMask(document.getElementById(key)));bindPercentInput(document.getElementById('vendaDescontoPercentual'));
+['vendaPreco','vendaDescontoReais'].forEach(key=>document.getElementById(key).addEventListener('money-mask-updated',updateSalePreview));
 document.getElementById('adicionarPagamento').addEventListener('click',addPaymentRow);
 function createReceiptPdf(receipt){
  if(!window.jspdf||!window.jspdf.jsPDF){toast('A biblioteca de PDF não carregou. Verifique a internet e tente novamente.',true);return false;}
