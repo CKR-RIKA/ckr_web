@@ -19,6 +19,12 @@
         <input id="ckrLoginUser" name="username" autocomplete="username" required maxlength="60" placeholder="Digite seu usuário">
         <label for="ckrLoginPassword">Senha</label>
         <input id="ckrLoginPassword" name="password" type="password" autocomplete="current-password" required maxlength="120" placeholder="Digite sua senha">
+        <div id="ckrCaptchaBox" class="captcha-box" hidden>
+          <label for="ckrCaptchaInput">Verificação de segurança</label>
+          <div class="captcha-row"><canvas id="ckrCaptchaCanvas" width="190" height="56" role="img" aria-label="Código de verificação"></canvas><button type="button" id="ckrCaptchaRefresh" class="captcha-refresh" aria-label="Gerar novo código" title="Gerar novo código">&#8635;</button></div>
+          <input id="ckrCaptchaInput" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="8" placeholder="Digite o código da imagem">
+          <small class="captcha-hint">Não diferencia maiúsculas de minúsculas.</small>
+        </div>
         <p id="ckrAuthError" class="auth-error" role="alert"></p>
         <button id="ckrLoginSubmit" class="button button-primary auth-submit" type="submit">Entrar</button>
       </form>
