@@ -854,7 +854,39 @@ addPaymentRow();
  else if(sessionStorage.getItem(SESSION_KEY)){try{const sess=JSON.parse(sessionStorage.getItem(SESSION_KEY));let u=null;if(sess.role==='admin'&&normalized(sess.username)===normalized(admin.username))u={username:admin.username,role:'admin'};else{const f=users.find(x=>normalized(x.username)===normalized(sess.username));if(f&&!(f.expiresAt&&Date.now()>=new Date(f.expiresAt).getTime()))u={username:f.username,role:f.role==='master'?'master':'usuario'};}if(u)enter(u);else{sessionStorage.removeItem(SESSION_KEY);showLogin();}}catch(e){showLogin();}}
  else{showLogin();}
  setupForm.addEventListener('submit',e=>{e.preventDefault();setupError.textContent='';const username=document.getElementById('ckrSetupUser').value.trim(),password=document.getElementById('ckrSetupPassword').value,confirmPassword=document.getElementById('ckrSetupConfirm').value;if(username.length<3){setupError.textContent='O usuário deve ter pelo menos 3 caracteres.';return;}if(password.length<6){setupError.textContent='A senha precisa ter pelo menos 6 caracteres.';return;}if(password!==confirmPassword){setupError.textContent='As senhas não são iguais.';return;}try{localStorage.setItem(AUTH_KEY,JSON.stringify({username,password}));admin={username,password};enter({username,role:'admin'});toast('Administrador criado neste navegador.');}catch(err){setupError.textContent='Não foi possível salvar as credenciais neste navegador.';}});
- loginForm.addEventListener('submit',e=>{e.preventDefault();error.textContent='';const username=userInput.value.trim(),password=passInput.value,u=getValidUser(username,password);if(u&&u.expired){error.textContent='O prazo de uso deste usuário terminou. Solicite ao ADMIN um novo acesso.';passInput.value='';return;}if(u){passInput.value='';enter(u);}else{error.textContent='Usuário ou senha incorretos.';passInput.value='';passInput.focus();}});
+ // ===== Captcha: aparece depois de 3 erros de senha seguidos (a contagem fica salva no navegador até acertar o login) =====
+ const FAILS_KEY='ckr_web_login_fails_v1', MAX_FAILS=3;
+ const captchaBox=document.getElementById('ckrCaptchaBox'), captchaCanvas=document.getElementById('ckrCaptchaCanvas'), captchaInput=document.getElementById('ckrCaptchaInput');
+ let captchaCode='';
+ const getFails=()=>{try{return Number(localStorage.getItem(FAILS_KEY))||0;}catch(e){return 0;}};
+ const setFails=n=>{try{if(n>0)localStorage.setItem(FAILS_KEY,String(n));else localStorage.removeItem(FAILS_KEY);}catch(e){}};
+ const rnd=n=>{try{const a=new Uint32Array(1);crypto.getRandomValues(a);return a[0]%n;}catch(e){return Math.floor(Math.random()*n);}};
+ function newCaptcha(){
+  const chars='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  captchaCode=Array.from({length:5},()=>chars[rnd(chars.length)]).join('');
+  const ctx=captchaCanvas.getContext('2d'),w=captchaCanvas.width,h=captchaCanvas.height;
+  ctx.clearRect(0,0,w,h);ctx.fillStyle='#f1f5fb';ctx.fillRect(0,0,w,h);
+  for(let k=0;k<7;k++){ctx.strokeStyle=`hsla(${rnd(360)},45%,55%,.55)`;ctx.lineWidth=1+rnd(2);ctx.beginPath();ctx.moveTo(rnd(w),rnd(h));ctx.bezierCurveTo(rnd(w),rnd(h),rnd(w),rnd(h),rnd(w),rnd(h));ctx.stroke();}
+  for(let k=0;k<45;k++){ctx.fillStyle=`hsla(${rnd(360)},40%,50%,.5)`;ctx.fillRect(rnd(w),rnd(h),2,2);}
+  const step=w/(captchaCode.length+1);
+  [...captchaCode].forEach((ch,k)=>{ctx.save();ctx.translate(step*(k+1),h/2+(rnd(10)-5));ctx.rotate((rnd(50)-25)*Math.PI/180);ctx.font=`bold ${28+rnd(8)}px Manrope, Arial, sans-serif`;ctx.fillStyle=`hsl(${rnd(360)},55%,30%)`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(ch,0,0);ctx.restore();});
+  captchaInput.value='';
+ }
+ function syncCaptcha(){const need=getFails()>=MAX_FAILS;captchaBox.hidden=!need;captchaInput.required=need;if(need){if(!captchaCode)newCaptcha();}else{captchaCode='';captchaInput.value='';}}
+ document.getElementById('ckrCaptchaRefresh').addEventListener('click',()=>{newCaptcha();captchaInput.focus();});
+ syncCaptcha();
+ loginForm.addEventListener('submit',e=>{
+  e.preventDefault();error.textContent='';
+  if(getFails()>=MAX_FAILS&&captchaInput.value.trim().toUpperCase()!==captchaCode){error.textContent='Código de verificação incorreto. Tente novamente.';newCaptcha();captchaInput.focus();return;}
+  const username=userInput.value.trim(),password=passInput.value,u=getValidUser(username,password);
+  if(u&&u.expired){error.textContent='O prazo de uso deste usuário terminou. Solicite ao ADMIN um novo acesso.';passInput.value='';return;}
+  if(u){setFails(0);syncCaptcha();passInput.value='';enter(u);}
+  else{
+   const n=getFails()+1;setFails(n);
+   error.textContent=n===MAX_FAILS?'Usuário ou senha incorretos. Digite também o código de verificação para continuar.':'Usuário ou senha incorretos.';
+   passInput.value='';if(n>=MAX_FAILS){captchaCode='';}syncCaptcha();passInput.focus();
+  }
+ });
  function doLogout(){if(editingSale||saleCart.length)cancelSaleEdit();sessionStorage.removeItem(SESSION_KEY);currentUser=null;updateExpiryStatus();delete document.body.dataset.ckrRole;delete document.body.dataset.ckrUser;closeUsers();showLogin();passInput.value='';}
  // Master e Usuário perdem o acesso assim que o prazo termina, mesmo com o sistema aberto. O ADMIN nunca expira.
  function checkExpiry(){if(!currentUser||currentUser.role==='admin')return;const f=users.find(u=>normalized(u.username)===normalized(currentUser.username));if(!f||(f.expiresAt&&Date.now()>=new Date(f.expiresAt).getTime())){const removed=!f;doLogout();error.textContent=removed?'Este usuário não existe mais. Solicite acesso ao ADMIN.':'O prazo de uso deste usuário terminou. Solicite ao ADMIN um novo acesso.';}}
