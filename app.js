@@ -140,7 +140,8 @@ function renderStats(){
 }
 function renderProducts(){
  const q=document.getElementById('buscaProduto').value.trim().toLowerCase();
- const items=data.products.filter(p=>p.name.toLowerCase().includes(q)||String(p.code||'').toLowerCase().includes(q)).sort((a,b)=>a.name.localeCompare(b.name,'pt-BR'));
+ const soPositivos=document.getElementById('filtroEstoquePositivo').checked;
+ const items=data.products.filter(p=>(p.name.toLowerCase().includes(q)||String(p.code||'').toLowerCase().includes(q))&&(!soPositivos||Number(p.stock)>0)).sort((a,b)=>a.name.localeCompare(b.name,'pt-BR'));
  document.getElementById('listaProdutos').innerHTML=items.map(p=>`<tr><td><span class="product-name">${esc(p.name)}</span></td><td>${esc(p.code||'—')}</td><td class="${p.stock<=2?'stock-low':''}">${Number(p.stock)}</td><td>${money(p.cost)}</td><td>${money(p.price)}</td><td><button class="row-action" data-edit="${esc(p.id)}">Editar</button><button class="row-action delete" data-delete="${esc(p.id)}">Excluir</button></td></tr>`).join('');
  document.getElementById('semProdutos').style.display=items.length?'none':'block';
  document.getElementById('produtoSubtitulo').textContent=`${items.length} ${items.length===1?'item encontrado':'itens encontrados'}`;
@@ -155,7 +156,8 @@ function renderSelects(){
 // Ignora acentos e maiúsculas; várias palavras valem em qualquer ordem (ex.: "casal colchao").
 function renderVendaProdutoSelect(){
  const el=document.getElementById('vendaProduto'),current=el.value;
- el.innerHTML='<option value="">Selecione um produto...</option>'+data.products.slice().sort((a,b)=>a.name.localeCompare(b.name,'pt-BR')).map(p=>`<option value="${esc(p.id)}">${esc(p.name)} — estoque: ${Number(p.stock)}</option>`).join('');
+ const soPos=document.getElementById('filtroVendaEstoque')&&document.getElementById('filtroVendaEstoque').checked;
+ el.innerHTML='<option value="">Selecione um produto...</option>'+data.products.filter(p=>!soPos||Number(p.stock)>0||p.id===current).sort((a,b)=>a.name.localeCompare(b.name,'pt-BR')).map(p=>`<option value="${esc(p.id)}">${esc(p.name)} — estoque: ${Number(p.stock)}</option>`).join('');
  if(data.products.some(p=>p.id===current))el.value=current;
 }
 (function(){
@@ -167,7 +169,8 @@ function renderVendaProdutoSelect(){
  function render(){
   const words=fold(box.value).split(/\s+/).filter(Boolean);
   if(!words.length){items=[];close();return;}
-  items=data.products.slice().sort((a,b)=>a.name.localeCompare(b.name,'pt-BR')).filter(p=>words.every(w=>fold(p.name).includes(w)||fold(p.code||'').includes(w))).slice(0,30);
+  const soPos=document.getElementById('filtroVendaEstoque').checked;
+  items=data.products.slice().sort((a,b)=>a.name.localeCompare(b.name,'pt-BR')).filter(p=>(!soPos||Number(p.stock)>0)&&words.every(w=>fold(p.name).includes(w)||fold(p.code||'').includes(w))).slice(0,30);
   list.innerHTML=items.length?items.map((p,i)=>`<button type="button" data-i="${i}"><span>${esc(p.name)}</span><small>${Number(p.stock)>0?'estoque: '+Number(p.stock):'sem estoque'} · ${money(p.price)}</small></button>`).join(''):'<div class="empty">Nenhum produto encontrado</div>';
   list.hidden=false;active=-1;
  }
@@ -181,6 +184,7 @@ function renderVendaProdutoSelect(){
   render();
  });
  box.addEventListener('focus',()=>{if(box.value.trim()&&!sel.value)render();});
+ document.getElementById('filtroVendaEstoque').addEventListener('change',()=>{renderVendaProdutoSelect();if(box.value.trim()&&!sel.value)render();});
  box.addEventListener('keydown',e=>{
   if(e.key==='Enter'){e.preventDefault();if(!list.hidden&&items.length)pick(active>=0?active:0);return;}
   if(e.key==='Escape'){close();return;}
@@ -311,6 +315,7 @@ document.getElementById('listaProdutos').addEventListener('click',e=>{
  if(del){const p=productById(del);if(!p)return;if(!confirm(`Excluir "${p.name}" do catálogo? O histórico será mantido.`))return;data.products=data.products.filter(x=>x.id!==del);if(editingId===del)resetProductForm();if(saveData())toast('Produto excluído.');}
 });
 document.getElementById('buscaProduto').addEventListener('input',renderProducts);
+document.getElementById('filtroEstoquePositivo').addEventListener('change',renderProducts);
 document.getElementById('formEntrada').addEventListener('submit',e=>{e.preventDefault();const p=productById(document.getElementById('entradaProduto').value),qty=Number(document.getElementById('entradaQuantidade').value),note=document.getElementById('entradaObs').value.trim();if(!p){toast('Cadastre e selecione um produto primeiro.',true);return;}if(!Number.isInteger(qty)||qty<1){toast('Informe uma quantidade inteira maior que zero.',true);return;}p.stock+=qty;recordMovement('entrada',p,qty,p.cost*qty,note);if(saveData()){e.target.reset();toast('Entrada registrada com sucesso.');}});
 function cartSubtotal(){return Math.round(saleCart.reduce((sum,item)=>sum+item.quantity*item.price,0)*100)/100;}
 function saleTotals(){
