@@ -854,6 +854,15 @@ addPaymentRow();
  else if(sessionStorage.getItem(SESSION_KEY)){try{const sess=JSON.parse(sessionStorage.getItem(SESSION_KEY));let u=null;if(sess.role==='admin'&&normalized(sess.username)===normalized(admin.username))u={username:admin.username,role:'admin'};else{const f=users.find(x=>normalized(x.username)===normalized(sess.username));if(f&&!(f.expiresAt&&Date.now()>=new Date(f.expiresAt).getTime()))u={username:f.username,role:f.role==='master'?'master':'usuario'};}if(u)enter(u);else{sessionStorage.removeItem(SESSION_KEY);showLogin();}}catch(e){showLogin();}}
  else{showLogin();}
  setupForm.addEventListener('submit',e=>{e.preventDefault();setupError.textContent='';const username=document.getElementById('ckrSetupUser').value.trim(),password=document.getElementById('ckrSetupPassword').value,confirmPassword=document.getElementById('ckrSetupConfirm').value;if(username.length<3){setupError.textContent='O usuário deve ter pelo menos 3 caracteres.';return;}if(password.length<6){setupError.textContent='A senha precisa ter pelo menos 6 caracteres.';return;}if(password!==confirmPassword){setupError.textContent='As senhas não são iguais.';return;}try{localStorage.setItem(AUTH_KEY,JSON.stringify({username,password}));admin={username,password};enter({username,role:'admin'});toast('Administrador criado neste navegador.');}catch(err){setupError.textContent='Não foi possível salvar as credenciais neste navegador.';}});
+ // ===== Botão "Mostrar/Ocultar" em todos os campos de senha (útil no celular) =====
+ document.querySelectorAll('input[type="password"]').forEach(inp=>{
+  if(inp.parentElement.classList.contains('pw-wrap'))return;
+  const wrap=document.createElement('div'),btn=document.createElement('button');
+  wrap.className='pw-wrap';inp.parentNode.insertBefore(wrap,inp);wrap.appendChild(inp);
+  btn.type='button';btn.className='pw-toggle';btn.textContent='Mostrar';btn.setAttribute('aria-label','Mostrar senha');btn.setAttribute('aria-pressed','false');
+  btn.addEventListener('click',()=>{const show=inp.type==='password';inp.type=show?'text':'password';btn.textContent=show?'Ocultar':'Mostrar';btn.setAttribute('aria-label',show?'Ocultar senha':'Mostrar senha');btn.setAttribute('aria-pressed',show?'true':'false');});
+  wrap.appendChild(btn);
+ });
  // ===== Captcha: aparece depois de 3 erros de senha seguidos (a contagem fica salva no navegador até acertar o login) =====
  const FAILS_KEY='ckr_web_login_fails_v1', MAX_FAILS=3;
  const captchaBox=document.getElementById('ckrCaptchaBox'), captchaCanvas=document.getElementById('ckrCaptchaCanvas'), captchaInput=document.getElementById('ckrCaptchaInput');
