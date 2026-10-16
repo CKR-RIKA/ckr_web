@@ -597,7 +597,7 @@ addPaymentRow();
  // ===== USUÁRIO MASTER PADRÃO (com prazo) =====
  // Padrão: usuário  master  /  senha  master 123  (com espaço)  -> todas as funções, MENOS "Gerenciar usuários".
  // Tem prazo de uso como os demais (começa a contar no 1º uso neste navegador). O ADMIN pode renovar, trocar a senha ou excluir.
- const DEFAULT_MASTER={username:'master',password:'sha256:7d0b5dd249519af18f5e986b20303dcd5e29ee57e88bf73bfd90c4c34b715d7f',days:182.5};
+ const DEFAULT_MASTER={username:'master',password:'sha256:26d7e256ae2ce893ed628bdebed4bade810a6484cd6f1f9b484fccbac87b4731',days:182.5};
  const MASTER_SEED_KEY='ckr_web_default_master_seeded_v1';
  try{
    if(!localStorage.getItem(MASTER_SEED_KEY)){
