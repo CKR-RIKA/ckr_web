@@ -292,3 +292,9 @@ tr.row-canceled td:not(.sale-status){opacity:.6}
 .captcha-refresh{flex:none;width:44px;height:44px;border:1px solid #e0e6ef;border-radius:8px;background:#fff;color:#3468f5;font-size:20px;line-height:1;cursor:pointer}
 .captcha-refresh:hover{background:#eef3ff}
 .captcha-hint{display:block;margin-top:6px;font-size:10px;color:#8b95a7}
+
+/* Botão mostrar/ocultar senha */
+.pw-wrap{position:relative;display:block;width:100%}
+.pw-wrap input{padding-right:84px!important}
+.pw-toggle{position:absolute;right:6px;top:50%;transform:translateY(-50%);height:36px;min-width:68px;padding:0 10px;border:0;border-radius:8px;background:#eef3ff;color:#3468f5;font:700 11px 'DM Sans',sans-serif;cursor:pointer}
+.pw-toggle:hover{background:#e0e9ff}
