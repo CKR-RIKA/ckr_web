@@ -151,19 +151,47 @@ function renderSelects(){
  renderVendaProdutoSelect(false);
  updateSalePreview();
 }
-// Busca de produto na venda: filtra pelo nome (ou parte dele) e pelo código, sem diferenciar acentos/maiúsculas.
-// Várias palavras funcionam em qualquer ordem (ex.: "colchao casal"). Se sobrar só 1 produto, ele já é selecionado.
-function renderVendaProdutoSelect(autoPick){
- const el=document.getElementById('vendaProduto'),box=document.getElementById('vendaBuscaProduto'),current=el.value;
- const q=fold(box?box.value:'').trim(),words=q.split(/\s+/).filter(Boolean);
- const list=data.products.slice().sort((a,b)=>a.name.localeCompare(b.name,'pt-BR')).filter(p=>!words.length||words.every(w=>fold(p.name).includes(w)||fold(p.code||'').includes(w)));
- const head=!words.length?'Selecione um produto...':(list.length?`${list.length} ${list.length===1?'produto encontrado':'produtos encontrados'} — selecione`:'Nenhum produto encontrado');
- el.innerHTML=`<option value="">${head}</option>`+list.map(p=>`<option value="${esc(p.id)}">${esc(p.name)} — estoque: ${Number(p.stock)}</option>`).join('');
- if(list.some(p=>p.id===current))el.value=current;else if(autoPick&&words.length&&list.length===1)el.value=list[0].id;
+// Busca de produto na venda: ao digitar parte do nome (ou código), aparece uma lista de sugestões para clicar.
+// Ignora acentos e maiúsculas; várias palavras valem em qualquer ordem (ex.: "casal colchao").
+function renderVendaProdutoSelect(){
+ const el=document.getElementById('vendaProduto'),current=el.value;
+ el.innerHTML='<option value="">Selecione um produto...</option>'+data.products.slice().sort((a,b)=>a.name.localeCompare(b.name,'pt-BR')).map(p=>`<option value="${esc(p.id)}">${esc(p.name)} — estoque: ${Number(p.stock)}</option>`).join('');
+ if(data.products.some(p=>p.id===current))el.value=current;
 }
-(function(){const box=document.getElementById('vendaBuscaProduto');if(!box)return;
- box.addEventListener('input',()=>{renderVendaProdutoSelect(true);updateSalePreview();});
- box.addEventListener('keydown',e=>{if(e.key==='Enter')e.preventDefault();});
+(function(){
+ const box=document.getElementById('vendaBuscaProduto'),list=document.getElementById('vendaSugestoes'),sel=document.getElementById('vendaProduto');
+ if(!box||!list||!sel)return;
+ let items=[],active=-1;
+ const close=()=>{list.hidden=true;active=-1;};
+ const setActive=i=>{active=i;[...list.children].forEach((c,k)=>c.classList.toggle('active',k===i));const c=list.children[i];if(c&&c.scrollIntoView)c.scrollIntoView({block:'nearest'});};
+ function render(){
+  const words=fold(box.value).split(/\s+/).filter(Boolean);
+  if(!words.length){items=[];close();return;}
+  items=data.products.slice().sort((a,b)=>a.name.localeCompare(b.name,'pt-BR')).filter(p=>words.every(w=>fold(p.name).includes(w)||fold(p.code||'').includes(w))).slice(0,30);
+  list.innerHTML=items.length?items.map((p,i)=>`<button type="button" data-i="${i}"><span>${esc(p.name)}</span><small>${Number(p.stock)>0?'estoque: '+Number(p.stock):'sem estoque'} · ${money(p.price)}</small></button>`).join(''):'<div class="empty">Nenhum produto encontrado</div>';
+  list.hidden=false;active=-1;
+ }
+ function pick(i){
+  const p=items[i];if(!p)return;
+  sel.value=p.id;box.value=p.name;close();updateSalePreview();
+  document.getElementById('vendaQuantidade').focus();
+ }
+ box.addEventListener('input',()=>{
+  if(sel.value){const cur=productById(sel.value);if(!cur||cur.name!==box.value){sel.value='';updateSalePreview();}}
+  render();
+ });
+ box.addEventListener('focus',()=>{if(box.value.trim()&&!sel.value)render();});
+ box.addEventListener('keydown',e=>{
+  if(e.key==='Enter'){e.preventDefault();if(!list.hidden&&items.length)pick(active>=0?active:0);return;}
+  if(e.key==='Escape'){close();return;}
+  if((e.key==='ArrowDown'||e.key==='ArrowUp')&&items.length){
+   e.preventDefault();if(list.hidden)render();
+   setActive(e.key==='ArrowDown'?Math.min(items.length-1,active+1):Math.max(0,active-1));
+  }
+ });
+ list.addEventListener('mousedown',e=>e.preventDefault());
+ list.addEventListener('click',e=>{const b=e.target.closest('button[data-i]');if(b)pick(Number(b.dataset.i));});
+ document.addEventListener('click',e=>{if(!e.target.closest('.product-search'))close();});
 })();
 function renderHistory(){
  const filter=document.getElementById('filtroTipo').value;
